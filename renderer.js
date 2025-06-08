@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const userId = "user123"; // This should be dynamically set based on user login
+    try {
+        const userId = "user123"; // This should be dynamically set based on user login
     const API_BASE_URL = 'http://127.0.0.1:5000'; // Define the base URL for your Flask backend
 
     const chatMessages = document.getElementById('chat-messages');
@@ -127,11 +128,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
     applyTheme(savedTheme);
 
-    themeToggleButton.addEventListener('click', () => {
-        const currentTheme = localStorage.getItem('theme');
-        const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
-        applyTheme(newTheme);
-    });
+    if (themeToggleButton) {
+        themeToggleButton.addEventListener('click', () => {
+            const currentTheme = localStorage.getItem('theme');
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            applyTheme(newTheme);
+        });
+    } else {
+        console.error("Theme toggle button not found.");
+    }
 
     // --- Navigation and View Switching ---
     function showView(viewId) {
@@ -171,14 +176,25 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndRenderTasks() {
         tasksListContainer.innerHTML = '<p class="text-muted">Loading tasks...</p>';
         try {
-            // Use absolute URL
             const response = await fetch(`${API_BASE_URL}/tasks?user_id=${userId}`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* Ignore if error response is not JSON */ }
+                throw new Error(errorMsg);
+            }
+            // Handle 204 No Content if applicable, though GET usually has content
+            if (response.status === 204) {
+                renderTasks([]); // Render empty if server says no content
+                return;
+            }
             const data = await response.json();
-            renderTasks(data.tasks);
+            renderTasks(data.tasks || []); // Ensure data.tasks is fallback to array
         } catch (error) {
             console.error('Error fetching tasks:', error);
-            tasksListContainer.innerHTML = '<p class="text-error">Failed to load tasks. Please ensure your backend server is running and accessible at ' + API_BASE_URL + '.</p>';
+            tasksListContainer.innerHTML = `<p class="text-error">Failed to load tasks: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.</p>`;
         }
     }
 
@@ -196,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const dueDate = task.due_datetime ? new Date(task.due_datetime).toLocaleString() : 'No due date';
             const descriptionSnippet = task.description ? ` - ${task.description.substring(0, 50)}${task.description.length > 50 ? '...' : ''}` : '';
-            
+
             taskElement.innerHTML = `
                 <div class="task-header">
                     <h4 class="task-title">${task.title}</h4>
@@ -219,14 +235,24 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndRenderEvents() {
         eventsListContainer.innerHTML = '<p class="text-muted">Loading events...</p>';
         try {
-            // Use absolute URL
             const response = await fetch(`${API_BASE_URL}/events?user_id=${userId}`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* Ignore if error response is not JSON */ }
+                throw new Error(errorMsg);
+            }
+            if (response.status === 204) {
+                renderEvents([]);
+                return;
+            }
             const data = await response.json();
-            renderEvents(data.events);
+            renderEvents(data.events || []);
         } catch (error) {
             console.error('Error fetching events:', error);
-            eventsListContainer.innerHTML = '<p class="text-error">Failed to load events. Please ensure your backend server is running and accessible at ' + API_BASE_URL + '.</p>';
+            eventsListContainer.innerHTML = `<p class="text-error">Failed to load events: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.</p>`;
         }
     }
 
@@ -244,7 +270,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const startDt = new Date(event.start_datetime).toLocaleString();
             const endDt = event.end_datetime ? new Date(event.end_datetime).toLocaleString() : 'N/A';
-            
+
             eventElement.innerHTML = `
                 <div class="event-header">
                     <h4 class="event-title">${event.title}</h4>
@@ -267,14 +293,24 @@ document.addEventListener('DOMContentLoaded', () => {
     async function fetchAndRenderCourses() {
         coursesListContainer.innerHTML = '<p class="text-muted">Loading courses...</p>';
         try {
-            // Use absolute URL
             const response = await fetch(`${API_BASE_URL}/courses?user_id=${userId}`);
-            if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+            if (!response.ok) {
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* Ignore if error response is not JSON */ }
+                throw new Error(errorMsg);
+            }
+            if (response.status === 204) {
+                renderCourses([]);
+                return;
+            }
             const data = await response.json();
-            renderCourses(data.courses);
+            renderCourses(data.courses || []);
         } catch (error) {
             console.error('Error fetching courses:', error);
-            coursesListContainer.innerHTML = '<p class="text-error">Failed to load courses. Please ensure your backend server is running and accessible at ' + API_BASE_URL + '.</p>';
+            coursesListContainer.innerHTML = `<p class="text-error">Failed to load courses: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.</p>`;
         }
     }
 
@@ -292,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const startDate = course.start_date ? new Date(course.start_date).toLocaleDateString() : 'N/A';
             const endDate = course.end_date ? new Date(course.end_date).toLocaleDateString() : 'N/A';
-            
+
             courseElement.innerHTML = `
                 <div class="course-header">
                     <h4 class="course-name">${course.name}</h4>
@@ -314,25 +350,37 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- Dashboard Updates ---
     async function updateDashboard() {
         try {
-            const [tasksRes, eventsRes, coursesRes] = await Promise.all([
+            const fetchPromises = [
                 fetch(`${API_BASE_URL}/tasks?user_id=${userId}`),
                 fetch(`${API_BASE_URL}/events?user_id=${userId}`),
                 fetch(`${API_BASE_URL}/courses?user_id=${userId}`)
-            ]);
+            ];
+            const responses = await Promise.all(fetchPromises);
 
-            const tasksData = await tasksRes.json();
-            const eventsData = await eventsRes.json();
-            const coursesData = await coursesRes.json();
+            for (const response of responses) {
+                if (!response.ok) {
+                    let errorMsg = `HTTP error! status: ${response.status}`;
+                    try {
+                        const errorData = await response.json();
+                        errorMsg = errorData.error || errorData.message || errorMsg;
+                    } catch (e) { /* Ignore */ }
+                    throw new Error(`Failed to fetch one or more dashboard data components: ${errorMsg}`);
+                }
+            }
 
-            const tasks = tasksData.tasks || [];
-            const events = eventsData.events || [];
-            const courses = coursesData.courses || [];
+            const [tasksData, eventsData, coursesData] = await Promise.all(
+                responses.map(res => res.status === 204 ? null : res.json()) // Handle 204 for .json()
+            );
+            // Ensure tasks, events, courses are arrays even if data is null (e.g. from 204)
+            const tasks = (tasksData && tasksData.tasks) || [];
+            const events = (eventsData && eventsData.events) || [];
+            const courses = (coursesData && coursesData.courses) || [];
 
             const pendingTasks = tasks.filter(t => t.status === 'pending').length;
             const now = new Date();
             const upcomingEvents = events.filter(e => new Date(e.start_datetime) > now).length;
-            const activeCourses = courses.filter(c => 
-                (!c.start_date || new Date(c.start_date) <= now) && 
+            const activeCourses = courses.filter(c =>
+                (!c.start_date || new Date(c.start_date) <= now) &&
                 (!c.end_date || new Date(c.end_date) >= now)
             ).length;
 
@@ -353,7 +401,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (recentItems.length > 0) {
                     recentItems.forEach(item => {
                         const li = document.createElement('li');
-                        li.textContent = `${new Date(item.date).toLocaleDateString()}: ${item.type} "${item.title}" updated.`;
+                        // Ensure item.date is valid before creating a Date object
+                        const dateString = item.date && !isNaN(new Date(item.date).getTime())
+                                           ? new Date(item.date).toLocaleDateString()
+                                           : "Date unknown";
+                        li.textContent = `${dateString}: ${item.type} "${item.title}" updated.`;
                         dashboardRecentActivity.appendChild(li);
                     });
                 } else {
@@ -384,7 +436,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const dueDateTime = getFormattedDateTime(newTaskDueDate, newTaskDueTime);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/tasks`, { // Use absolute URL
+            const response = await fetch(`${API_BASE_URL}/tasks`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -396,20 +448,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     status: newTaskStatus.value
                 })
             });
-            const result = await response.json();
-            if (response.ok) {
-                alert(result.message);
-                newTaskTitle.value = '';
-                newTaskDescription.value = '';
-                newTaskDueDate.value = '';
-                newTaskDueTime.value = '';
-                newTaskPriority.value = 'medium';
-                newTaskStatus.value = 'pending';
-                fetchAndRenderTasks();
-                updateDashboard();
-            } else {
-                throw new Error(result.error || 'Failed to add task.');
+            if (!response.ok) {
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* Ignore */ }
+                throw new Error(errorMsg);
             }
+            const result = await response.json();
+            alert(result.message || 'Task added successfully!');
+            newTaskTitle.value = '';
+            newTaskDescription.value = '';
+            newTaskDueDate.value = '';
+            newTaskDueTime.value = '';
+            newTaskPriority.value = 'medium';
+            newTaskStatus.value = 'pending';
+            fetchAndRenderTasks();
+            updateDashboard();
         } catch (error) {
             console.error('Error adding task:', error);
             alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -429,17 +485,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const taskId = e.target.dataset.id;
                 if (confirm('Are you sure you want to delete this task?')) {
                     try {
-                        const response = await fetch(`${API_BASE_URL}/tasks/${taskId}?user_id=${userId}`, { // Use absolute URL
+                        const response = await fetch(`${API_BASE_URL}/tasks/${taskId}?user_id=${userId}`, {
                             method: 'DELETE'
                         });
-                        const result = await response.json();
-                        if (response.ok) {
-                            alert(result.message);
-                            fetchAndRenderTasks();
-                            updateDashboard();
-                        } else {
-                            throw new Error(result.error || 'Failed to delete task.');
+                        if (!response.ok) {
+                            let errorMsg = `HTTP error! status: ${response.status}`;
+                            try {
+                                const errorData = await response.json(); // Backend sends JSON error for DELETE failure
+                                errorMsg = errorData.error || errorData.message || errorMsg;
+                            } catch (e) { /* Ignore */ }
+                            throw new Error(errorMsg);
                         }
+                        // Backend sends JSON success message for DELETE
+                        if (response.status !== 204) { // Check if there is content
+                             const result = await response.json();
+                             alert(result.message || 'Task deleted successfully!');
+                        } else {
+                            alert('Task deleted successfully!'); // For 204 No Content
+                        }
+                        fetchAndRenderTasks();
+                        updateDashboard();
                     } catch (error) {
                         console.error('Error deleting task:', error);
                         alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -550,21 +615,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 try {
-                    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}?user_id=${userId}`, { // Use absolute URL
+                    const response = await fetch(`${API_BASE_URL}/tasks/${taskId}?user_id=${userId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(updates)
                     });
-                    const result = await response.json();
-                    if (response.ok) {
-                        alert(result.message);
-                        modal.style.display = 'none';
-                        modal.remove();
-                        fetchAndRenderTasks(); // Refresh list
-                        updateDashboard();
-                    } else {
-                        throw new Error(result.error || 'Failed to update task.');
+                    if (!response.ok) {
+                        let errorMsg = `HTTP error! status: ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMsg = errorData.error || errorData.message || errorMsg;
+                        } catch (e) { /* Ignore */ }
+                        throw new Error(errorMsg);
                     }
+                    const result = await response.json();
+                    alert(result.message || 'Task updated successfully!');
+                    modal.style.display = 'none';
+                    modal.remove();
+                    fetchAndRenderTasks(); // Refresh list
+                    updateDashboard();
                 } catch (error) {
                     console.error('Error updating task:', error);
                     alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -591,7 +660,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const endDateTime = getFormattedDateTime(newEventEndDate, newEventEndTime);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/events`, { // Use absolute URL
+            const response = await fetch(`${API_BASE_URL}/events`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -604,22 +673,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     attendees: newEventAttendees.value.trim()
                 })
             });
-            const result = await response.json();
-            if (response.ok) {
-                alert(result.message);
-                newEventTitle.value = '';
-                newEventDescription.value = '';
-                newEventStartDate.value = '';
-                newEventStartTime.value = '';
-                newEventEndDate.value = '';
-                newEventEndTime.value = '';
-                newEventLocation.value = '';
-                newEventAttendees.value = '';
-                fetchAndRenderEvents();
-                updateDashboard();
-            } else {
-                throw new Error(result.error || 'Failed to add event.');
+            if (!response.ok) {
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* Ignore */ }
+                throw new Error(errorMsg);
             }
+            const result = await response.json();
+            alert(result.message || 'Event added successfully!');
+            newEventTitle.value = '';
+            newEventDescription.value = '';
+            newEventStartDate.value = '';
+            newEventStartTime.value = '';
+            newEventEndDate.value = '';
+            newEventEndTime.value = '';
+            newEventLocation.value = '';
+            newEventAttendees.value = '';
+            fetchAndRenderEvents();
+            updateDashboard();
         } catch (error) {
             console.error('Error adding event:', error);
             alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -639,17 +712,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const eventId = e.target.dataset.id;
                 if (confirm('Are you sure you want to delete this event?')) {
                     try {
-                        const response = await fetch(`${API_BASE_URL}/events/${eventId}?user_id=${userId}`, { // Use absolute URL
+                        const response = await fetch(`${API_BASE_URL}/events/${eventId}?user_id=${userId}`, {
                             method: 'DELETE'
                         });
-                        const result = await response.json();
-                        if (response.ok) {
-                            alert(result.message);
-                            fetchAndRenderEvents();
-                            updateDashboard();
-                        } else {
-                            throw new Error(result.error || 'Failed to delete event.');
+                        if (!response.ok) {
+                            let errorMsg = `HTTP error! status: ${response.status}`;
+                            try {
+                                const errorData = await response.json(); // Backend sends JSON error for DELETE failure
+                                errorMsg = errorData.error || errorData.message || errorMsg;
+                            } catch (e) { /* Ignore */ }
+                            throw new Error(errorMsg);
                         }
+                        // Backend sends JSON success message for DELETE
+                        if (response.status !== 204) { // Check if there is content
+                             const result = await response.json();
+                             alert(result.message || 'Event deleted successfully!');
+                        } else {
+                            alert('Event deleted successfully!'); // For 204 No Content
+                        }
+                        fetchAndRenderEvents();
+                        updateDashboard();
                     } catch (error) {
                         console.error('Error deleting event:', error);
                         alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -759,21 +841,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 try {
-                    const response = await fetch(`${API_BASE_URL}/events/${eventId}?user_id=${userId}`, { // Use absolute URL
+                    const response = await fetch(`${API_BASE_URL}/events/${eventId}?user_id=${userId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(updates)
                     });
-                    const result = await response.json();
-                    if (response.ok) {
-                        alert(result.message);
-                        modal.style.display = 'none';
-                        modal.remove();
-                        fetchAndRenderEvents(); // Refresh list
-                        updateDashboard();
-                    } else {
-                        throw new Error(result.error || 'Failed to update event.');
+                    if (!response.ok) {
+                        let errorMsg = `HTTP error! status: ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMsg = errorData.error || errorData.message || errorMsg;
+                        } catch (e) { /* Ignore */ }
+                        throw new Error(errorMsg);
                     }
+                    const result = await response.json();
+                    alert(result.message || 'Event updated successfully!');
+                    modal.style.display = 'none';
+                    modal.remove();
+                    fetchAndRenderEvents(); // Refresh list
+                    updateDashboard();
                 } catch (error) {
                     console.error('Error updating event:', error);
                     alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -799,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const endDate = getFormattedDate(newCourseEndDate);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/courses`, { // Use absolute URL
+            const response = await fetch(`${API_BASE_URL}/courses`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -812,20 +898,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     schedule: newCourseSchedule.value.trim()
                 })
             });
-            const result = await response.json();
-            if (response.ok) {
-                alert(result.message);
-                newCourseName.value = '';
-                newCourseDescription.value = '';
-                newCourseInstructor.value = '';
-                newCourseSchedule.value = '';
-                newCourseStartDate.value = '';
-                newCourseEndDate.value = '';
-                fetchAndRenderCourses();
-                updateDashboard();
-            } else {
-                throw new Error(result.error || 'Failed to add course.');
+            if (!response.ok) {
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* Ignore */ }
+                throw new Error(errorMsg);
             }
+            const result = await response.json();
+            alert(result.message || 'Course added successfully!');
+            newCourseName.value = '';
+            newCourseDescription.value = '';
+            newCourseInstructor.value = '';
+            newCourseSchedule.value = '';
+            newCourseStartDate.value = '';
+            newCourseEndDate.value = '';
+            fetchAndRenderCourses();
+            updateDashboard();
         } catch (error) {
             console.error('Error adding course:', error);
             alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -845,17 +935,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 const courseId = e.target.dataset.id;
                 if (confirm('Are you sure you want to delete this course? This will not delete related tasks.')) {
                     try {
-                        const response = await fetch(`${API_BASE_URL}/courses/${courseId}?user_id=${userId}`, { // Use absolute URL
+                        const response = await fetch(`${API_BASE_URL}/courses/${courseId}?user_id=${userId}`, {
                             method: 'DELETE'
                         });
-                        const result = await response.json();
-                        if (response.ok) {
-                            alert(result.message);
-                            fetchAndRenderCourses();
-                            updateDashboard();
-                        } else {
-                            throw new Error(result.error || 'Failed to delete course.');
+                        if (!response.ok) {
+                            let errorMsg = `HTTP error! status: ${response.status}`;
+                            try {
+                                const errorData = await response.json(); // Backend sends JSON error for DELETE failure
+                                errorMsg = errorData.error || errorData.message || errorMsg;
+                            } catch (e) { /* Ignore */ }
+                            throw new Error(errorMsg);
                         }
+                        // Backend sends JSON success message for DELETE
+                        if (response.status !== 204) { // Check if there is content
+                             const result = await response.json();
+                             alert(result.message || 'Course deleted successfully!');
+                        } else {
+                            alert('Course deleted successfully!'); // For 204 No Content
+                        }
+                        fetchAndRenderCourses();
+                        updateDashboard();
                     } catch (error) {
                         console.error('Error deleting course:', error);
                         alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -948,21 +1047,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 try {
-                    const response = await fetch(`${API_BASE_URL}/courses/${courseId}?user_id=${userId}`, { // Use absolute URL
+                    const response = await fetch(`${API_BASE_URL}/courses/${courseId}?user_id=${userId}`, {
                         method: 'PUT',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(updates)
                     });
-                    const result = await response.json();
-                    if (response.ok) {
-                        alert(result.message);
-                        modal.style.display = 'none';
-                        modal.remove();
-                        fetchAndRenderCourses(); // Refresh list
-                        updateDashboard();
-                    } else {
-                        throw new Error(result.error || 'Failed to update course.');
+                    if (!response.ok) {
+                        let errorMsg = `HTTP error! status: ${response.status}`;
+                        try {
+                            const errorData = await response.json();
+                            errorMsg = errorData.error || errorData.message || errorMsg;
+                        } catch (e) { /* Ignore */ }
+                        throw new Error(errorMsg);
                     }
+                    const result = await response.json();
+                    alert(result.message || 'Course updated successfully!');
+                    modal.style.display = 'none';
+                    modal.remove();
+                    fetchAndRenderCourses(); // Refresh list
+                    updateDashboard();
                 } catch (error) {
                     console.error('Error updating course:', error);
                     alert(`Error: ${error.message}. Please ensure your backend server is running and accessible at ${API_BASE_URL}.`);
@@ -1000,8 +1103,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+                let errorMsg = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorData.message || errorMsg;
+                } catch (e) { /* If error response isn't JSON, use the status code message */ }
+                throw new Error(errorMsg);
             }
 
             const data = await response.json();
@@ -1048,4 +1155,8 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('kairo_style', currentKairoStyle);
         addMessageToChat('kairo', `My response style has been set to "${currentKairoStyle}".`);
     });
+    } catch (e) {
+        console.error("Critical error during initialization:", e);
+        alert("A critical error occurred while initializing the application. Some features may not work. Please check the console for details.");
+    }
 });
