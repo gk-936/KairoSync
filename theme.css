@@ -1,0 +1,244 @@
+/* theme.css - Frozen Glass & Zen Minimalist Theme */
+
+:root {
+    /* Backgrounds - Light Mode (with transparency for glass effect) */
+    --bg-primary-zen: #F7F9FA; /* Base page background */
+    --bg-secondary-zen: rgba(247, 249, 250, 0.75); /* Sidebar, chat - semi-transparent */
+    --bg-card-zen: rgba(255, 255, 255, 0.65); /* Cards - more transparent */
+    --bg-hover-zen: rgba(230, 235, 240, 0.5); /* Lighter hover for glass elements */
+    --bg-chat-message-kairo-zen: rgba(220, 225, 230, 0.8);
+
+    /* Text Colors - Light Mode */
+    --text-primary-zen: #2c3e50; /* Darker, softer black/blue */
+    --text-secondary-zen: #7f8c8d; /* Muted gray for descriptions */
+    --text-placeholder-zen: #bdc3c7;
+    --text-link-zen: #3498db; /* A calm blue */
+
+    /* Accent Colors - Light Mode */
+    --accent-primary-zen: #5D7A99; /* Muted blue/slate */
+    --accent-secondary-zen: #88B04B; /* Muted green for success */
+    --accent-warning-zen: #f39c12; /* Muted orange */
+    --accent-danger-zen: #c0392b; /* Muted red */
+
+    /* Borders & Dividers - Light Mode */
+    --border-light-zen: rgba(44, 62, 80, 0.15); /* Softer, slightly visible border */
+    --border-medium-zen: rgba(44, 62, 80, 0.3);
+
+    /* Shadows (Subtle) */
+    --shadow-light-zen: 0 4px 12px rgba(0, 0, 0, 0.08);
+    --shadow-medium-zen: 0 6px 16px rgba(0, 0, 0, 0.1);
+
+    /* Font Sizes (Consider if adjustment needed for zen feel - often slightly larger base or more spacing) */
+    --font-size-base-zen: 16px; /* Standard base */
+
+    /* Spacing (Zen often implies more generous spacing) */
+    --spacing-xs-zen: 0.35rem;
+    --spacing-sm-zen: 0.7rem;
+    --spacing-md-zen: 1.4rem;
+    --spacing-lg-zen: 2.1rem;
+    --spacing-xl-zen: 2.8rem;
+    --spacing-2xl-zen: 4.2rem;
+}
+
+body.dark-mode {
+    /* Backgrounds - Dark Mode (with transparency for glass effect) */
+    --bg-primary-zen: #1A1D1F; /* Very dark, almost black */
+    --bg-secondary-zen: rgba(30, 33, 36, 0.75); /* Sidebar, chat - semi-transparent dark */
+    --bg-card-zen: rgba(38, 42, 46, 0.65); /* Cards - more transparent dark */
+    --bg-hover-zen: rgba(50, 55, 60, 0.5);
+    --bg-chat-message-kairo-zen: rgba(60, 65, 70, 0.8);
+
+    /* Text Colors - Dark Mode */
+    --text-primary-zen: #EAECEE; /* Light gray for main text */
+    --text-secondary-zen: #ABB2B9; /* Muted lighter gray */
+    --text-placeholder-zen: #85929E;
+    --text-link-zen: #5DADE2; /* Brighter blue for links */
+
+    /* Accent Colors - Dark Mode */
+    --accent-primary-zen: #7A9CBF; /* Lighter muted blue/slate */
+    --accent-secondary-zen: #A2D970;
+    --accent-warning-zen: #F5B041;
+    --accent-danger-zen: #E74C3C;
+
+    /* Borders & Dividers - Dark Mode */
+    --border-light-zen: rgba(234, 236, 238, 0.15);
+    --border-medium-zen: rgba(234, 236, 238, 0.3);
+
+    /* Shadows (Subtle for dark mode) */
+    --shadow-light-zen: 0 4px 12px rgba(0, 0, 0, 0.25);
+    --shadow-medium-zen: 0 6px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Apply new variables to base elements */
+body {
+    background-color: var(--bg-primary-zen) !important; /* Important to override style.css */
+    color: var(--text-primary-zen) !important;
+    font-family: 'Inter', sans-serif; /* Ensure Inter is still primary */
+    font-size: var(--font-size-base-zen);
+    line-height: 1.7; /* Slightly more line height for zen */
+    /* The gradient background from previous attempts should be removed from style.css or overridden here if needed */
+}
+
+/* Ensure the main app container and columns use the new variables and have backdrop filters */
+/* Note: backdrop-filter was partially applied in style.css already, ensure this complements it */
+#app-container {
+    background-color: transparent; /* App container itself shouldn't have a conflicting bg */
+}
+
+#sidebar,
+#chat-column {
+    background-color: var(--bg-secondary-zen) !important;
+    backdrop-filter: blur(12px) saturate(180%); /* Apply here again to ensure it works with new BG */
+    -webkit-backdrop-filter: blur(12px) saturate(180%);
+    border: none; /* Remove existing borders if any, new ones might be --border-light-zen */
+}
+#sidebar {
+    border-right: 1px solid color-mix(in srgb, var(--border-light-zen) 60%, transparent) !important;
+}
+#chat-column {
+    border-left: 1px solid color-mix(in srgb, var(--border-light-zen) 60%, transparent) !important;
+}
+
+
+#main-content {
+    background-color: transparent !important; /* Main content area should be transparent to show body background */
+    padding: var(--spacing-lg-zen) var(--spacing-xl-zen) !important; /* Use new spacing */
+}
+
+.card {
+    background-color: var(--bg-card-zen) !important;
+    backdrop-filter: blur(12px) saturate(150%);
+    -webkit-backdrop-filter: blur(12px) saturate(150%);
+    border: 1px solid var(--border-light-zen) !important; /* Subtle border for cards */
+    box-shadow: var(--shadow-light-zen) !important;
+    border-radius: calc(var(--spacing-sm-zen) * 1.5); /* Softer radius */
+    padding: var(--spacing-lg-zen) !important; /* Use new spacing */
+    margin-bottom: var(--spacing-lg-zen) !important;
+}
+
+/* Headings - Softer and Zen like */
+h1, h2, h3, h4, h5, h6 {
+    color: var(--text-primary-zen) !important;
+    font-weight: 500; /* Lighter headings */
+    margin-bottom: var(--spacing-md-zen) !important;
+}
+h1 { font-size: var(--font-size-2xl); letter-spacing: -0.5px; }
+h2 { font-size: var(--font-size-xl); }
+h3 { font-size: var(--font-size-lg); }
+h4 { font-size: var(--font-size-md); }
+
+/* Links */
+a {
+    color: var(--text-link-zen) !important;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+a:hover {
+    color: color-mix(in srgb, var(--text-link-zen) 80%, var(--text-primary-zen)) !important;
+}
+
+/* Input elements styling */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+input[type="date"],
+input[type="time"],
+textarea,
+select {
+    background-color: var(--bg-card-zen) !important;
+    color: var(--text-primary-zen) !important;
+    border: 1px solid color-mix(in srgb, var(--border-light-zen) 50%, transparent) !important;
+    border-radius: var(--spacing-xs-zen);
+    padding: var(--spacing-sm-zen) !important;
+}
+input[type="text"]::placeholder,
+textarea::placeholder {
+    color: var(--text-placeholder-zen) !important;
+}
+input[type="text"]:focus,
+textarea:focus,
+select:focus {
+    border-color: var(--accent-primary-zen) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary-zen) 30%, transparent) !important;
+}
+
+
+/* Buttons - Zen Minimalist */
+button, .button-primary { /* Style all buttons consistently first */
+    background-color: var(--accent-primary-zen) !important;
+    color: #ffffff !important; /* White text on accent for good contrast */
+    border: none !important;
+    padding: var(--spacing-sm-zen) var(--spacing-md-zen) !important;
+    border-radius: var(--spacing-xs-zen);
+    font-weight: 500;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+button:hover, .button-primary:hover {
+    background-color: color-mix(in srgb, var(--accent-primary-zen) 85%, black) !important;
+    box-shadow: var(--shadow-light-zen) !important;
+}
+.button-secondary {
+    background-color: transparent !important;
+    border: 1px solid var(--accent-primary-zen) !important;
+    color: var(--accent-primary-zen) !important;
+}
+.button-secondary:hover {
+    background-color: color-mix(in srgb, var(--accent-primary-zen) 15%, transparent) !important;
+    color: var(--accent-primary-zen) !important;
+}
+.button-danger, .task-actions .button-delete { /* For delete buttons */
+    background-color: var(--accent-danger-zen) !important;
+    color: #ffffff !important;
+}
+.button-danger:hover, .task-actions .button-delete:hover {
+    background-color: color-mix(in srgb, var(--accent-danger-zen) 85%, black) !important;
+}
+
+
+/* Navigation specific overrides */
+.nav-item {
+    color: var(--text-secondary-zen) !important;
+    padding: var(--spacing-sm-zen) var(--spacing-md-zen) !important;
+    border-radius: var(--spacing-xs-zen);
+}
+.nav-item:hover {
+    background-color: var(--bg-hover-zen) !important;
+    color: var(--text-primary-zen) !important;
+}
+.nav-item.active {
+    background-color: var(--accent-primary-zen) !important;
+    color: #ffffff !important; /* White text on accent */
+    box-shadow: var(--shadow-light-zen) !important;
+}
+.nav-item.active:hover {
+    background-color: color-mix(in srgb, var(--accent-primary-zen) 85%, black) !important;
+}
+
+/* Chat messages */
+.chat-message.user {
+    background-color: var(--accent-primary-zen) !important;
+    color: #ffffff !important;
+    border-radius: var(--spacing-md-zen);
+    border-bottom-right-radius: var(--spacing-xs-zen);
+}
+
+.chat-message.kairo {
+    background-color: var(--bg-chat-message-kairo-zen) !important;
+    color: var(--text-primary-zen) !important;
+    border-radius: var(--spacing-md-zen);
+    border-bottom-left-radius: var(--spacing-xs-zen);
+}
+
+#chat-input-area {
+    background-color: var(--bg-secondary-zen) !important; /* Match sidebar/chat column bg */
+    border-top: 1px solid var(--border-light-zen) !important;
+}
+#chat-input {
+     background-color: var(--bg-card-zen) !important; /* Input field like a card */
+}
+
+/* Remove or override the previously set body background from style.css if it was a gradient */
+body {
+    background: var(--bg-primary-zen) !important; /* Solid color or a very subtle new gradient */
+}

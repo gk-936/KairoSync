@@ -87,9 +87,15 @@ body {
     font-size: var(--font-size-base);
     line-height: 1.6;
     color: var(--text-primary);
-    background-color: var(--bg-primary);
+    /* background-color: var(--bg-primary); Will be transparent + glass */
     transition: background-color 0.3s ease, color 0.3s ease;
     overflow: hidden; /* Manage overflow with main container */
+    font-weight: 400; /* Regular font weight for body */
+
+    /* Placeholder gradient for body to make glass effect visible */
+    background: linear-gradient(120deg, #a1c4fd 0%, #c2e9fb 100%); /* Light, airy gradient */
+    background-size: cover;
+    background-attachment: fixed;
 }
 
 *:focus {
@@ -178,7 +184,9 @@ select:focus {
 }
 
 #sidebar {
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-secondary); /* Will be semi-transparent later */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); /* Safari support */
     border-right: 1px solid var(--border-dark); /* Stronger separator */
     padding: var(--spacing-lg) var(--spacing-md);
     display: flex;
@@ -187,7 +195,9 @@ select:focus {
 }
 
 #main-content {
-    background-color: var(--bg-primary);
+    background-color: var(--bg-primary); /* Will be semi-transparent later */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); /* Safari support */
     padding: var(--spacing-lg) var(--spacing-xl); /* More horizontal padding for main content */
     overflow-y: auto; /* Allow main content to scroll */
     display: flex;
@@ -195,7 +205,9 @@ select:focus {
 }
 
 #chat-column {
-    background-color: var(--bg-secondary);
+    background-color: var(--bg-secondary); /* Will be semi-transparent later */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px); /* Safari support */
     border-left: 1px solid var(--border-dark); /* Stronger separator */
     display: flex;
     flex-direction: column;
