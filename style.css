@@ -171,7 +171,8 @@ select:focus {
 /* --- New 3-Column Layout --- */
 #app-container {
     display: grid;
-    grid-template-columns: 250px 1fr 350px; /* Sidebar | Main Content | Chat Column */
+    /* Sidebar | Main Content | Chat Column */
+    grid-template-columns: minmax(240px, 1fr) 4fr minmax(320px, 1.5fr); /* More flexible column widths */
     height: 100vh;
     overflow: hidden; /* Prevents scrollbars on the main container */
     background-color: var(--bg-primary); /* The overall app background */
@@ -209,8 +210,9 @@ select:focus {
 /* Card/Panel Basic Style */
 .card {
     background-color: var(--bg-card);
-    border-radius: var(--spacing-sm);
-    box-shadow: var(--shadow-light);
+    border-radius: var(--spacing-md); /* Slightly larger radius for cards */
+    border: 1px solid var(--border-light); /* Subtle border for better definition */
+    box-shadow: var(--shadow-medium); /* Enhanced shadow for more depth */
     padding: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
 }
@@ -609,3 +611,147 @@ h4 { font-size: var(--font-size-md); } /* Added for tasks/courses titles */
 .status-in-progress { background-color: #FFC107; } /* Orange */
 .status-completed { background-color: #28A745; } /* Green */
 .status-cancelled { background-color: #6C757D; } /* Gray */
+
+/* --- Modal Styles --- */
+.modal {
+    display: none; /* Hidden by default */
+    position: fixed;
+    z-index: 1000; /* High z-index to appear on top */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto; /* Enable scroll if modal content is too long */
+    background-color: rgba(0, 0, 0, 0.6); /* Dimmed background */
+    animation: fadeIn 0.3s ease-out;
+}
+
+.modal.active {
+    display: flex; /* Use flex to center content */
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+    margin: auto; /* Centered */
+    padding: var(--spacing-xl); /* Generous padding */
+    border: 1px solid var(--border-dark);
+    border-radius: var(--spacing-md); /* Rounded corners */
+    box-shadow: var(--shadow-medium); /* Consistent shadow */
+    width: 90%;
+    max-width: 600px; /* Max width for larger screens */
+    position: relative; /* For close button positioning */
+    animation: slideIn 0.3s ease-out;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.modal-header h3 {
+    margin-bottom: 0; /* Remove default margin */
+    font-size: var(--font-size-xl); /* Prominent title */
+}
+
+.modal-close-button {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: var(--font-size-2xl); /* Large close icon */
+    cursor: pointer;
+    padding: var(--spacing-xs); /* Make it easier to click */
+    line-height: 1;
+}
+.modal-close-button:hover {
+    color: var(--text-primary);
+}
+
+.modal-body {
+    margin-bottom: var(--spacing-lg);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-md);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--border-light);
+}
+
+/* Modal Animations (Subtle) */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideIn {
+    from { transform: translateY(-20px) scale(0.98); opacity: 0; }
+    to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+/* Ensure modals are hidden when .hidden class is present */
+.modal.hidden {
+    display: none !important;
+}
+
+/* --- Toast Notification Styles --- */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1000; /* Ensure toast is above modals (modals are 1000) */
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.toast {
+    padding: 12px 20px;
+    border-radius: var(--spacing-sm);
+    box-shadow: var(--shadow-medium);
+    opacity: 0;
+    transform: translateY(-20px);
+    animation: toastFadeIn 0.3s forwards, toastFadeOut 0.3s 3.7s forwards;
+    min-width: 250px;
+    max-width: 350px;
+    font-size: var(--font-size-base);
+    border-left-width: 5px;
+    border-left-style: solid;
+}
+
+.toast.success {
+    background-color: var(--accent-secondary);
+    color: var(--bg-card); /* Ensuring contrast with background */
+    border-left-color: color-mix(in srgb, var(--accent-secondary) 70%, black);
+}
+
+.toast.error {
+    background-color: var(--accent-danger);
+    color: var(--bg-card); /* Ensuring contrast with background */
+    border-left-color: color-mix(in srgb, var(--accent-danger) 70%, black);
+}
+
+@keyframes toastFadeIn {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes toastFadeOut {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+}

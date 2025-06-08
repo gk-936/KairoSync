@@ -10,11 +10,7 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app) # Enable CORS for all routes
 
-DATABASE = 'kairo_data.db' # Ensure this matches your file name
-
-# Ollama API Configuration
-OLLAMA_URL = "http://localhost:11434/api/chat"
-OLLAMA_MODEL = "llama3.1:8b" # Make sure this model is pulled in your Ollama installation
+DATABASE = 'kairo_data.db'
 
 # --- Custom Exception for API Errors ---
 class APIError(Exception):
@@ -24,18 +20,17 @@ class APIError(Exception):
         self.message = message
         self.status_code = status_code
 
-# --- Database Functions ---
+# --- Database Setup ---
 def get_db():
     """Establishes a database connection or returns the existing one."""
     db = getattr(g, '_database', None)
     if db is None:
         db = g._database = sqlite3.connect(DATABASE)
-        db.row_factory = sqlite3.Row # This makes rows behave like dictionaries
+        db.row_factory = sqlite3.Row
     return db
 
 @app.teardown_appcontext
 def close_connection(exception):
-    """Closes the database connection at the end of the request."""
     db = getattr(g, '_database', None)
     if db is not None:
         db.close()
@@ -45,26 +40,33 @@ def setup_database():
     with app.app_context():
         db = get_db()
         cursor = db.cursor()
-
-        # Create tasks table
+        # Tasks Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS tasks (
                 task_id TEXT PRIMARY KEY,
                 user_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 description TEXT,
-                due_datetime TEXT, -- ISO format:YYYY-MM-DDTHH:MM:SS
-                priority TEXT DEFAULT 'medium', -- e.g., low, medium, high
-                status TEXT DEFAULT 'pending', -- e.g., pending, in-progress, completed, cancelled
-                tags TEXT,        -- comma-separated tags
-                course_id TEXT,   -- Optional: Link to a course
-                parent_id TEXT,   -- Optional: For sub-tasks/dependencies
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
+                due_date TEXT, -- Storing as TEXT in ISO format (YYYY-MM-DDTHH:MM:SS)
+                priority TEXT DEFAULT 'medium',
+                status TEXT DEFAULT 'pending',
+                tags TEXT,
+                course_id TEXT,
+                parent_id TEXT,
+                created_at TEXT,
+                updated_at TEXT
+            )
         ''')
+        # Add Indexes for tasks
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks (user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks (due_date);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks (status);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks (priority);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_course_id ON tasks (course_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_parent_id ON tasks (parent_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks (created_at);")
 
-        # Create events table
+        # Events Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS events (
                 event_id TEXT PRIMARY KEY,
@@ -75,12 +77,15 @@ def setup_database():
                 end_datetime TEXT,     -- ISO format
                 location TEXT,
                 attendees TEXT,        -- comma-separated emails
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
+                created_at TEXT,
+                updated_at TEXT
+            )
         ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_user_id ON events (user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_start_datetime ON events (start_datetime);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_created_at ON events (created_at);")
 
-        # Create courses table
+        # Courses Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS courses (
                 course_id TEXT PRIMARY KEY,
@@ -91,12 +96,15 @@ def setup_database():
                 schedule TEXT,      -- e.g., "Mon,Wed,Fri 09:00-10:00"
                 start_date TEXT,    -- YYYY-MM-DD
                 end_date TEXT,      -- YYYY-MM-DD
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
+                created_at TEXT,
+                updated_at TEXT
+            )
         ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_courses_user_id ON courses (user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_courses_start_date ON courses (start_date);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_courses_created_at ON courses (created_at);")
 
-        # Create conversation_history table
+        # Conversation History Table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS conversation_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,224 +113,390 @@ def setup_database():
                 message TEXT NOT NULL,
                 timestamp TEXT DEFAULT CURRENT_TIMESTAMP,
                 parsed_action TEXT -- Store the JSON string of parsed action
-            );
+            )
         ''')
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_history_user_id ON conversation_history (user_id);")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversation_history_timestamp ON conversation_history (timestamp);")
 
         db.commit()
-        print("Database initialized successfully.")
+        print("Database initialized successfully with tables and indexes.")
 
-# Run database initialization on app startup
-with app.app_context():
+def init_db(): # Renamed from init_db to avoid conflict with flask command if any, and to be explicit.
+    """Initializes the database if it hasn't been already for this app context."""
+    # This function can be called explicitly at app start.
+    # setup_database() will use app.app_context()
     setup_database()
 
-# --- Helper Functions for Database Operations ---
+init_db() # Call it to ensure DB is set up when module is loaded.
 
-def generate_unique_id(prefix):
-    """Generates a unique ID based on timestamp and a prefix."""
-    return f"{prefix}_{datetime.datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-
+# --- Helper Functions ---
 def get_iso_datetime(dt_str):
-    """Converts a datetime string to ISO 8601 format, handling various inputs."""
     if not dt_str:
         return None
+
+    # Attempt to parse as YYYY-MM-DD first and foremost for this test
     try:
-        # Try parsing as full ISO format first
-        dt_obj = datetime.datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-        return dt_obj.isoformat()
+        # Try parsing as YYYY-MM-DD first to ensure correct end-of-day conversion
+        dt_obj = datetime.datetime.strptime(dt_str, '%Y-%m-%d')
+        return dt_obj.replace(hour=23, minute=59, second=59).isoformat()
     except ValueError:
+        # If not YYYY-MM-DD, try other formats
         try:
-            # Try parsing as YYYY-MM-DD HH:MM:SS
-            dt_obj = datetime.datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S')
-            return dt_obj.isoformat()
+            # Try parsing as full ISO format (handles 'Z' by removing it, assumes naive or UTC)
+            return datetime.datetime.fromisoformat(dt_str.replace('Z', '')).isoformat()
         except ValueError:
             try:
-                # Try parsing as YYYY-MM-DD (assume midnight)
-                dt_obj = datetime.datetime.strptime(dt_str, '%Y-%m-%d')
-                return dt_obj.isoformat()
+                # Try parsing as YYYY-MM-DD HH:MM:SS
+                return datetime.datetime.strptime(dt_str, '%Y-%m-%d %H:%M:%S').isoformat()
             except ValueError:
-                return None # Return None if format is unrecognized
+                return None # Return None if all formats fail
 
 def get_iso_date(date_str):
-    """Converts a date string to ISO 8601 YYYY-MM-DD format."""
     if not date_str:
         return None
     try:
-        date_obj = datetime.datetime.fromisoformat(date_str).date()
-        return date_obj.isoformat()
+        return datetime.datetime.fromisoformat(date_str.replace('Z', '')).date().isoformat()
     except ValueError:
-        return None
+        try:
+            return datetime.datetime.strptime(date_str, '%Y-%m-%d').date().isoformat()
+        except ValueError:
+            return None # Or raise APIError(f"Invalid date format: {date_str}", 400)
 
-# Task CRUD operations
-def add_task_to_db(user_id, title, description=None, due_datetime=None, priority='medium', status='pending', tags=None, course_id=None, parent_id=None):
-    db = get_db()
-    task_id = generate_unique_id("task")
-    current_time = datetime.datetime.now().isoformat()
-    due_datetime_iso = get_iso_datetime(due_datetime)
-    
-    db.execute(
-        "INSERT INTO tasks (task_id, user_id, title, description, due_datetime, priority, status, tags, course_id, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (task_id, user_id, title, description, due_datetime_iso, priority, status, tags, course_id, parent_id, current_time, current_time)
-    )
-    db.commit()
-    return get_task_by_id(user_id, task_id) # Return the newly created task object
+def generate_unique_id(prefix="item"):
+    #This helper function was missing in the previous app.py, adding it here.
+    #It was defined in test_app.py, but should be part of app.py for consistency if used by app logic (e.g. AI creating tasks)
+    import uuid
+    return f"{prefix}_{uuid.uuid4().hex[:8]}"
 
-def get_all_tasks_for_user(user_id):
-    db = get_db()
-    cursor = db.execute("SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
-    return [dict(row) for row in cursor.fetchall()]
+# OLLAMA_MODEL needs to be defined, assuming it's an environment variable or a fixed value.
+# For now, let's hardcode a placeholder if it's not in os.environ for broader compatibility.
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama2")
 
-def get_task_by_id(user_id, task_id):
-    db = get_db()
-    cursor = db.execute("SELECT * FROM tasks WHERE user_id = ? AND task_id = ?", (user_id, task_id))
-    task = cursor.fetchone()
-    return dict(task) if task else None
+
+def save_task_to_db(task):
+    conn = get_db()
+    cursor = conn.cursor()
+    # The task['due_date'] should already be normalized by the calling route/function (e.g., add_task_route or process_ai_action)
+    # before this function is called.
+    try:
+        cursor.execute(
+            "INSERT INTO tasks (task_id, user_id, title, description, due_date, priority, status, created_at, updated_at, tags, course_id, parent_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (task['task_id'], task['user_id'], task['title'], task.get('description'), task.get('due_date'), task.get('priority', 'medium'), task.get('status', 'pending'), task['created_at'], task['updated_at'], task.get('tags'), task.get('course_id'), task.get('parent_id'))
+        )
+        conn.commit()
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise APIError(f"Database error: {e}", 500)
+    return task
+
+def get_tasks_from_db(user_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM tasks WHERE user_id = ?", (user_id,))
+    tasks = [dict(row) for row in cursor.fetchall()]
+    return tasks
+
+def get_task_by_id_from_db(task_id, user_id=None):
+    conn = get_db()
+    cursor = conn.cursor()
+    if user_id:
+        cursor.execute("SELECT * FROM tasks WHERE task_id = ? AND user_id = ?", (task_id, user_id))
+    else: # Allow fetching by task_id only, internal use or admin? Carefully consider.
+        cursor.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,))
+    task_data = cursor.fetchone()
+    return dict(task_data) if task_data else None
 
 def update_task_in_db(task_id, user_id, updates):
-    db = get_db()
-    set_clauses = []
+    conn = get_db()
+    cursor = conn.cursor()
+    fields_to_update = []
     values = []
-    
-    updates['updated_at'] = datetime.datetime.now().isoformat() # Always update timestamp
-    
+    allowed_fields = ["title", "description", "due_date", "priority", "status", "tags", "course_id", "parent_id"]
+
     for key, value in updates.items():
-        if key == 'due_datetime':
-            value = get_iso_datetime(value) # Ensure consistent date format
-        if key not in ['task_id', 'user_id', 'created_at']: # Prevent updating primary key or immutable fields
-            set_clauses.append(f"{key} = ?")
+        if key not in allowed_fields:
+            continue
+        if key == 'due_date':
+            if value:
+                original_value = value
+                value = get_iso_datetime(value)
+                if not value:
+                    raise APIError(f"Invalid due_date format for '{original_value}'. Please use YYYY-MM-DDTHH:MM:SS, YYYY-MM-DD HH:MM:SS, or YYYY-MM-DD.", 400)
+            else: # Allow setting due_date to null
+                value = None
+        elif key == 'priority':
+            allowed_priorities = ['low', 'medium', 'high']
+            if value is not None and value not in allowed_priorities: # Allow None to skip update for this field
+                raise APIError(f"Invalid priority value '{value}'. Allowed values are: {', '.join(allowed_priorities)}.", 400)
+        elif key == 'status':
+            allowed_statuses = ['pending', 'in-progress', 'completed', 'cancelled']
+            if value is not None and value not in allowed_statuses: # Allow None to skip update
+                raise APIError(f"Invalid status value '{value}'. Allowed values are: {', '.join(allowed_statuses)}.", 400)
+
+        # Only add to update if value is not None, or if it's a field that can be set to NULL (like due_date, description)
+        if value is not None or key in ['description', 'due_date', 'tags', 'course_id', 'parent_id']:
+            fields_to_update.append(f"{key} = ?")
             values.append(value)
-    
-    if not set_clauses:
-        return False # No valid fields to update
 
-    sql = f"UPDATE tasks SET {', '.join(set_clauses)} WHERE user_id = ? AND task_id = ?"
-    values.extend([user_id, task_id])
-    
-    cursor = db.execute(sql, tuple(values))
-    db.commit()
-    return cursor.rowcount > 0
+    if not fields_to_update:
+        return 0 # No valid fields to update or all values were None for non-nullable fields
 
-def delete_task_from_db(task_id, user_id):
-    db = get_db()
-    cursor = db.execute("DELETE FROM tasks WHERE user_id = ? AND task_id = ?", (user_id, task_id))
-    db.commit()
-    return cursor.rowcount > 0
+    fields_to_update.append("updated_at = ?")
+    values.append(datetime.datetime.now().isoformat())
+    values.append(user_id) # For WHERE clause
+    values.append(task_id) # For WHERE clause
 
-# Event CRUD operations
+    sql = f"UPDATE tasks SET {', '.join(fields_to_update)} WHERE user_id = ? AND task_id = ?"
+    try:
+        cursor.execute(sql, tuple(values))
+        conn.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise APIError(f"Database error: {e}", 500)
+
+def delete_task_from_db(user_id, task_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM tasks WHERE user_id = ? AND task_id = ?", (user_id, task_id))
+        conn.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise APIError(f"Database error: {e}", 500)
+
+# Event CRUD DB Functions
 def add_event_to_db(user_id, title, start_datetime, description=None, end_datetime=None, location=None, attendees=None):
     db = get_db()
+    cursor = db.cursor()
     event_id = generate_unique_id("event")
     current_time = datetime.datetime.now().isoformat()
+
+    original_start_datetime = start_datetime
     start_datetime_iso = get_iso_datetime(start_datetime)
-    end_datetime_iso = get_iso_datetime(end_datetime)
-
     if not start_datetime_iso:
-        raise APIError("Valid start_datetime is required for event.", 400)
+        raise APIError(f"Invalid start_datetime format for '{original_start_datetime}'. Required.", 400)
 
-    db.execute(
-        "INSERT INTO events (event_id, user_id, title, description, start_datetime, end_datetime, location, attendees, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (event_id, user_id, title, description, start_datetime_iso, end_datetime_iso, location, attendees, current_time, current_time)
-    )
-    db.commit()
-    return get_event_by_id(user_id, event_id)
+    end_datetime_iso = None
+    if end_datetime:
+        original_end_datetime = end_datetime
+        end_datetime_iso = get_iso_datetime(end_datetime)
+        if not end_datetime_iso:
+            raise APIError(f"Invalid end_datetime format for '{original_end_datetime}'.", 400)
+        if start_datetime_iso and end_datetime_iso < start_datetime_iso: # Ensure end is after start
+            raise APIError(f"End datetime '{end_datetime}' cannot be before start datetime '{start_datetime}'.", 400)
+
+    try:
+        cursor.execute(
+            "INSERT INTO events (event_id, user_id, title, description, start_datetime, end_datetime, location, attendees, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (event_id, user_id, title, description, start_datetime_iso, end_datetime_iso, location, attendees, current_time, current_time)
+        )
+        db.commit()
+    except sqlite3.Error as e:
+        db.rollback()
+        raise APIError(f"Database error: {e}", 500)
+    return get_event_by_id(user_id, event_id) # Return the full event object
 
 def get_all_events_for_user(user_id):
     db = get_db()
-    cursor = db.execute("SELECT * FROM events WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
-    return [dict(row) for row in cursor.fetchall()]
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM events WHERE user_id = ? ORDER BY start_datetime DESC", (user_id,))
+    events = [dict(row) for row in cursor.fetchall()]
+    return events
 
 def get_event_by_id(user_id, event_id):
     db = get_db()
-    cursor = db.execute("SELECT * FROM events WHERE user_id = ? AND event_id = ?", (user_id, event_id))
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM events WHERE user_id = ? AND event_id = ?", (user_id, event_id))
+    event = cursor.fetchone()
+    return dict(event) if event else None
+
+def _get_event_by_id_internal(event_id): # Internal helper, e.g. if AI needs to check existence without user context
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM events WHERE event_id = ?", (event_id,))
     event = cursor.fetchone()
     return dict(event) if event else None
 
 def update_event_in_db(event_id, user_id, updates):
     db = get_db()
-    set_clauses = []
+    cursor = db.cursor()
+    fields_to_update = []
     values = []
-    
-    updates['updated_at'] = datetime.datetime.now().isoformat()
-    
-    for key, value in updates.items():
-        if key in ['start_datetime', 'end_datetime']:
-            value = get_iso_datetime(value) # Ensure consistent date format
-        if key not in ['event_id', 'user_id', 'created_at']:
-            set_clauses.append(f"{key} = ?")
-            values.append(value)
-    
-    if not set_clauses:
-        return False
+    allowed_fields = ["title", "description", "start_datetime", "end_datetime", "location", "attendees"]
 
-    sql = f"UPDATE events SET {', '.join(set_clauses)} WHERE user_id = ? AND event_id = ?"
-    values.extend([user_id, event_id])
-    
-    cursor = db.execute(sql, tuple(values))
-    db.commit()
-    return cursor.rowcount > 0
+    has_valid_update = False
+    for key, value in updates.items():
+        if key in allowed_fields:
+            if key in ['start_datetime', 'end_datetime']:
+                if value: # Allow clearing the datetime by passing None/null
+                    original_value = value
+                    value = get_iso_datetime(value)
+                    if not value:
+                        raise APIError(f"Invalid {key} format for '{original_value}'.", 400)
+            # For other fields, if value is None, it means clear the field (set to NULL)
+            # If value is provided, it's an update.
+            fields_to_update.append(f"{key} = ?")
+            values.append(value)
+            has_valid_update = True # Mark that there's a field to update
+
+    if not has_valid_update: # No valid fields were passed in `updates`
+        return 0
+
+    # Validate start/end datetime consistency if both are being updated or one is updated and the other exists
+    updated_start_datetime = updates.get('start_datetime')
+    updated_end_datetime = updates.get('end_datetime')
+
+    if updated_start_datetime or updated_end_datetime:
+        current_event_data = get_event_by_id(user_id, event_id)
+        sdt_to_check = get_iso_datetime(updated_start_datetime) if updated_start_datetime else current_event_data.get('start_datetime')
+        edt_to_check = get_iso_datetime(updated_end_datetime) if updated_end_datetime else current_event_data.get('end_datetime')
+        if sdt_to_check and edt_to_check and edt_to_check < sdt_to_check:
+            raise APIError("End datetime cannot be before start datetime.", 400)
+
+
+    fields_to_update.append("updated_at = ?")
+    values.append(datetime.datetime.now().isoformat())
+    values.append(user_id) # For WHERE user_id = ?
+    values.append(event_id) # For WHERE event_id = ?
+
+    sql = f"UPDATE events SET {', '.join(fields_to_update)} WHERE user_id = ? AND event_id = ?"
+    try:
+        cursor.execute(sql, tuple(values))
+        db.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        db.rollback()
+        raise APIError(f"Database error: {e}", 500)
 
 def delete_event_from_db(event_id, user_id):
-    db = get_db()
-    cursor = db.execute("DELETE FROM events WHERE user_id = ? AND event_id = ?", (user_id, event_id))
-    db.commit()
-    return cursor.rowcount > 0
+    conn = get_db()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM events WHERE user_id = ? AND event_id = ?", (user_id, event_id))
+        conn.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        conn.rollback()
+        raise APIError(f"Database error: {e}", 500)
 
 # Course CRUD operations
 def add_course_to_db(user_id, name, description=None, instructor=None, schedule=None, start_date=None, end_date=None):
     db = get_db()
+    cursor = db.cursor()
     course_id = generate_unique_id("course")
     current_time = datetime.datetime.now().isoformat()
-    start_date_iso = get_iso_date(start_date)
-    end_date_iso = get_iso_date(end_date)
 
-    db.execute(
-        "INSERT INTO courses (course_id, user_id, name, description, instructor, schedule, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (course_id, user_id, name, description, instructor, schedule, start_date_iso, end_date_iso, current_time, current_time)
-    )
-    db.commit()
+    start_date_iso = None
+    if start_date:
+        original_start_date = start_date
+        start_date_iso = get_iso_date(start_date)
+        if not start_date_iso:
+            raise APIError(f"Invalid start_date format for '{original_start_date}'. Please use YYYY-MM-DD.", 400)
+
+    end_date_iso = None
+    if end_date:
+        original_end_date = end_date
+        end_date_iso = get_iso_date(end_date)
+        if not end_date_iso:
+            raise APIError(f"Invalid end_date format for '{original_end_date}'. Please use YYYY-MM-DD.", 400)
+        if start_date_iso and end_date_iso < start_date_iso: # Ensure end is after start
+            raise APIError(f"End date '{end_date}' cannot be before start date '{start_date}'.", 400)
+
+    try:
+        cursor.execute(
+            "INSERT INTO courses (course_id, user_id, name, description, instructor, schedule, start_date, end_date, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (course_id, user_id, name, description, instructor, schedule, start_date_iso, end_date_iso, current_time, current_time)
+        )
+        db.commit()
+    except sqlite3.Error as e:
+        db.rollback()
+        raise APIError(f"Database error: {e}", 500)
     return get_course_by_id(user_id, course_id)
 
 def get_all_courses_for_user(user_id):
     db = get_db()
-    cursor = db.execute("SELECT * FROM courses WHERE user_id = ? ORDER BY created_at DESC", (user_id,))
-    return [dict(row) for row in cursor.fetchall()]
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM courses WHERE user_id = ?", (user_id,))
+    courses = [dict(row) for row in cursor.fetchall()]
+    return courses
 
 def get_course_by_id(user_id, course_id):
     db = get_db()
-    cursor = db.execute("SELECT * FROM courses WHERE user_id = ? AND course_id = ?", (user_id, course_id))
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM courses WHERE user_id = ? AND course_id = ?", (user_id, course_id))
+    course = cursor.fetchone()
+    return dict(course) if course else None
+
+def _get_course_by_id_internal(course_id): # Internal helper
+    db = get_db()
+    cursor = db.cursor()
+    cursor.execute("SELECT * FROM courses WHERE course_id = ?", (course_id,))
     course = cursor.fetchone()
     return dict(course) if course else None
 
 def update_course_in_db(course_id, user_id, updates):
     db = get_db()
-    set_clauses = []
+    cursor = db.cursor()
+    fields_to_update = []
     values = []
-    
-    updates['updated_at'] = datetime.datetime.now().isoformat()
-    
-    for key, value in updates.items():
-        if key in ['start_date', 'end_date']:
-            value = get_iso_date(value) # Ensure consistent date format
-        if key not in ['course_id', 'user_id', 'created_at']:
-            set_clauses.append(f"{key} = ?")
-            values.append(value)
-    
-    if not set_clauses:
-        return False
+    allowed_fields = ["name", "description", "instructor", "schedule", "start_date", "end_date"]
 
-    sql = f"UPDATE courses SET {', '.join(set_clauses)} WHERE user_id = ? AND course_id = ?"
-    values.extend([user_id, course_id])
-    
-    cursor = db.execute(sql, tuple(values))
-    db.commit()
-    return cursor.rowcount > 0
+    has_valid_update_field = False
+    for key, value in updates.items():
+        if key in allowed_fields:
+            if key in ['start_date', 'end_date']:
+                if value: # Allow clearing date by passing None/null
+                    original_value = value
+                    value = get_iso_date(value)
+                    if not value:
+                        raise APIError(f"Invalid {key} format for '{original_value}'. Please use YYYY-MM-DD.", 400)
+            fields_to_update.append(f"{key} = ?")
+            values.append(value)
+            has_valid_update_field = True
+
+
+    if not has_valid_update_field:
+        return 0
+
+    # Validate start/end date consistency
+    updated_start_date = updates.get('start_date')
+    updated_end_date = updates.get('end_date')
+    if updated_start_date or updated_end_date:
+        current_course_data = get_course_by_id(user_id, course_id)
+        sdt_to_check = get_iso_date(updated_start_date) if updated_start_date else current_course_data.get('start_date')
+        edt_to_check = get_iso_date(updated_end_date) if updated_end_date else current_course_data.get('end_date')
+        if sdt_to_check and edt_to_check and edt_to_check < sdt_to_check:
+            raise APIError("End date cannot be before start date.", 400)
+
+    fields_to_update.append("updated_at = ?")
+    values.append(datetime.datetime.now().isoformat())
+
+    sql = f"UPDATE courses SET {', '.join(fields_to_update)} WHERE user_id = ? AND course_id = ?"
+    values.extend([user_id, course_id]) # Add user_id and course_id for the WHERE clause
+
+    try:
+        cursor.execute(sql, tuple(values))
+        db.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        db.rollback()
+        raise APIError(f"Database error: {e}", 500)
 
 def delete_course_from_db(course_id, user_id):
     db = get_db()
-    cursor = db.execute("DELETE FROM courses WHERE user_id = ? AND course_id = ?", (user_id, course_id))
-    db.commit()
-    return cursor.rowcount > 0
+    cursor = db.cursor()
+    try:
+        cursor.execute("DELETE FROM courses WHERE user_id = ? AND course_id = ?", (user_id, course_id))
+        db.commit()
+        return cursor.rowcount
+    except sqlite3.Error as e:
+        db.rollback()
+        raise APIError(f"Database error: {e}", 500)
 
 # --- Ollama AI Integration ---
+OLLAMA_MODEL_API_URL = os.environ.get("OLLAMA_MODEL_API_URL", "http://localhost:11434/api/chat")
 
 def get_ollama_response(messages_history):
     """
@@ -331,31 +505,31 @@ def get_ollama_response(messages_history):
     """
     headers = {'Content-Type': 'application/json'}
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": OLLAMA_MODEL, # Ensure OLLAMA_MODEL is defined (e.g., from os.environ or hardcoded)
         "messages": messages_history,
-        "stream": False # Get a single complete response
+        "stream": False
     }
 
     try:
-        response = requests.post(OLLAMA_URL, headers=headers, data=json.dumps(payload), timeout=120)
-        response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+        response = requests.post(OLLAMA_MODEL_API_URL, headers=headers, data=json.dumps(payload), timeout=120)
+        response.raise_for_status()
         response_json = response.json()
 
         if "message" in response_json and "content" in response_json["message"]:
             return response_json["message"]["content"]
         else:
-            print(f"Error: Unexpected response format from Ollama: {response_json}")
-            return "I apologize, I received an unexpected response format from the AI."
+            app.logger.error(f"Unexpected response format from Ollama: {response_json}")
+            raise APIError("AI response format error.", 500)
 
     except requests.exceptions.ConnectionError as e:
-        print(f"Error: Could not connect to Ollama server at {OLLAMA_URL}. Is Ollama running? {e}")
-        return "I'm sorry, I cannot connect to the AI at the moment. Please ensure Ollama is running."
+        app.logger.error(f"Could not connect to Ollama server at {OLLAMA_MODEL_API_URL}: {e}")
+        raise APIError("Cannot connect to AI service.", 503) # Service Unavailable
     except requests.exceptions.Timeout:
-        print("Error: Ollama request timed out.")
-        return "The AI took too long to respond. Please try again."
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling Ollama API: {e}")
-        return f"An error occurred while communicating with the AI: {e}"
+        app.logger.error("Ollama request timed out.")
+        raise APIError("AI service timeout.", 504) # Gateway Timeout
+    except requests.exceptions.RequestException as e: # Catch other request-related errors
+        app.logger.error(f"Error calling Ollama API: {e}")
+        raise APIError(f"AI service communication error: {e}", 500)
 
 def parse_ai_action(user_message, conversation_history_list):
     """
@@ -363,135 +537,130 @@ def parse_ai_action(user_message, conversation_history_list):
     The LLM is prompted to output JSON.
     """
     current_date_str = datetime.date.today().isoformat()
-    
-    # Define the core system prompt template as a regular string
+
     system_prompt_template = """
-        You are an AI assistant named Kairo for a personal organizer app. Your primary goal is to understand user requests and convert them into structured JSON actions, or provide helpful conversational responses.
-        
-        **Always output ONLY a single JSON object. Do not include any other text or markdown outside the JSON.**
+You are Kairo, an AI assistant for a personal organizer app. Your goal is to convert user requests into structured JSON actions or provide conversational responses.
+Your response **must be only a single, valid JSON object** and nothing else. Do not include any explanatory text, markdown formatting, or anything outside of this single JSON object.
 
-        **Available Actions (JSON Schema):**
+**Available Actions (JSON Schema):**
 
-        1.  **Create a Task:**
-            ```json
-            {{"action": "create_task", "title": "string (required)", "description": "string (optional)", "due_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "priority": "low|medium|high (optional, default 'medium')", "status": "pending|in-progress|completed|cancelled (optional, default 'pending')", "tags": "comma-separated strings (optional)", "course_id": "string (optional, if related to a course)", "parent_id": "string (optional, for sub-tasks)"}}
-            ```
-            * **Examples:**
-                * "Create a task: buy groceries." -> `{{"action": "create_task", "title": "Buy groceries", "description": null, "due_datetime": null, "priority": "medium", "status": "pending", "tags": null, "course_id": null, "parent_id": null}}`
-                * "Remind me to call mom tomorrow at 5 PM." (Assume current date is {current_date}) -> `{{"action": "create_task", "title": "Call mom", "description": null, "due_datetime": "{tomorrow_date}T17:00:00", "priority": "medium", "status": "pending", "tags": null, "course_id": null, "parent_id": null}}`
-                * "Add a high priority task to finish project report by next Friday." (Assume next Friday is {next_friday_date}) -> `{{"action": "create_task", "title": "Finish project report", "description": null, "due_datetime": "{next_friday_date}T23:59:59", "priority": "high", "status": "pending", "tags": null, "course_id": null, "parent_id": null}}`
+1.  **Create a Task:**
+    ```json
+    {{"action": "create_task", "title": "string (required)", "description": "string (optional)", "due_date": "YYYY-MM-DDTHH:MM:SS (optional, if only date is given, time defaults to 23:59:59 of that day)", "priority": "low|medium|high (optional, default 'medium')", "status": "pending|in-progress|completed|cancelled (optional, default 'pending')", "tags": "comma-separated strings (optional)", "course_id": "string (optional, if related to a course)", "parent_id": "string (optional, for sub-tasks)"}}
+    ```
+    * **Examples:**
+        * "Create a task: buy groceries." -> `{{"action": "create_task", "title": "Buy groceries"}}`
+        * "Remind me to call mom tomorrow at 5 PM." (Current date: {current_date}) -> `{{"action": "create_task", "title": "Call mom", "due_date": "{tomorrow_date}T17:00:00"}}`
+        * "Add a high priority task to finish project report by next Friday." (Current date: {current_date}, next Friday: {next_friday_date}) -> `{{"action": "create_task", "title": "Finish project report", "due_date": "{next_friday_date}T23:59:59", "priority": "high"}}`
 
-        2.  **Update a Task:**
-            ```json
-            {{"action": "update_task", "task_id": "string (required, if identifiable)", "title_keywords": "string (optional, keywords to identify task by title if ID not given)", "title": "string (optional)", "description": "string (optional)", "due_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "priority": "low|medium|high (optional)", "status": "pending|in-progress|completed|cancelled (optional)", "tags": "comma-separated strings (optional)", "course_id": "string (optional)", "parent_id": "string (optional)"}}
-            ```
-            * **Examples:**
-                * "Mark 'buy groceries' as completed." -> `{{"action": "update_task", "title_keywords": "buy groceries", "status": "completed"}}`
-                * "Change the due date of task 'project report' to next Monday." (Assume next Monday is {next_monday_date}) -> `{{"action": "update_task", "title_keywords": "project report", "due_datetime": "{next_monday_date}T23:59:59"}}`
-                * "Update task_123 to high priority and add 'urgent' tag." -> `{{"action": "update_task", "task_id": "task_123", "priority": "high", "tags": "urgent"}}`
+2.  **Update a Task:**
+    ```json
+    {{"action": "update_task", "task_id": "string (optional, if known)", "title_keywords": "string (optional, to identify task by title if ID not given)", "title": "string (optional, new title)", "description": "string (optional)", "due_date": "YYYY-MM-DDTHH:MM:SS (optional, if only date is given, time defaults to 23:59:59)", "priority": "low|medium|high (optional)", "status": "pending|in-progress|completed|cancelled (optional)", "tags": "comma-separated strings (optional, replaces existing)", "course_id": "string (optional)", "parent_id": "string (optional)"}}
+    ```
+    * **Examples:**
+        * "Mark 'buy groceries' as completed." -> `{{"action": "update_task", "title_keywords": "buy groceries", "status": "completed"}}`
+        * "Change the due date of task 'project report' to next Monday." (Current date: {current_date}, next Monday: {next_monday_date}) -> `{{"action": "update_task", "title_keywords": "project report", "due_date": "{next_monday_date}T23:59:59"}}`
+        * "Update task_123 to high priority and add 'urgent, important' tags." -> `{{"action": "update_task", "task_id": "task_123", "priority": "high", "tags": "urgent, important"}}`
 
-        3.  **Delete a Task:**
-            ```json
-            {{"action": "delete_task", "task_id": "string (required, if identifiable)", "title_keywords": "string (optional, keywords to identify task by title if ID not given)"}}
-            ```
-            * **Examples:**
-                * "Delete task 'call mom'." -> `{{"action": "delete_task", "title_keywords": "call mom"}}`
-                * "Remove task_456." -> `{{"action": "delete_task", "task_id": "task_456"}}`
+3.  **Delete a Task:**
+    ```json
+    {{"action": "delete_task", "task_id": "string (optional, if known)", "title_keywords": "string (optional, to identify task by title if ID not given)"}}
+    ```
+    * **Examples:**
+        * "Delete task 'call mom'." -> `{{"action": "delete_task", "title_keywords": "call mom"}}`
+        * "Remove task_456." -> `{{"action": "delete_task", "task_id": "task_456"}}`
 
-        4.  **Create an Event:**
-            ```json
-            {{"action": "create_event", "title": "string (required)", "start_datetime": "YYYY-MM-DDTHH:MM:SS (required)", "description": "string (optional)", "end_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "location": "string (optional)", "attendees": "comma-separated emails (optional)"}}
-            ```
-            * **Examples:**
-                * "Schedule a meeting for tomorrow at 10 AM for 1 hour about project review." (Assume current date is {current_date}) -> `{{"action": "create_event", "title": "Project Review Meeting", "start_datetime": "{tomorrow_date}T10:00:00", "end_datetime": "{tomorrow_date}T11:00:00", "location": null, "description": "project review", "attendees": null}}`
-                * "Add a dentist appointment on 2025-07-15 at 3 PM." -> `{{"action": "create_event", "title": "Dentist Appointment", "start_datetime": "2025-07-15T15:00:00", "description": null, "end_datetime": null, "location": null, "attendees": null}}`
+4.  **Create an Event:**
+    ```json
+    {{"action": "create_event", "title": "string (required)", "start_datetime": "YYYY-MM-DDTHH:MM:SS (required)", "description": "string (optional)", "end_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "location": "string (optional)", "attendees": "comma-separated emails (optional)"}}
+    ```
+    * **Examples:**
+        * "Schedule a meeting for tomorrow at 10 AM for 1 hour about project review." (Current date: {current_date}) -> `{{"action": "create_event", "title": "Project Review Meeting", "start_datetime": "{tomorrow_date}T10:00:00", "end_datetime": "{tomorrow_date}T11:00:00", "description": "project review"}}`
+        * "Add a dentist appointment on 2025-07-15 at 3 PM." -> `{{"action": "create_event", "title": "Dentist Appointment", "start_datetime": "2025-07-15T15:00:00"}}`
 
-        5.  **Update an Event:**
-            ```json
-            {{"action": "update_event", "event_id": "string (required, if identifiable)", "title_keywords": "string (optional, keywords to identify event by title if ID not given)", "title": "string (optional)", "description": "string (optional)", "start_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "end_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "location": "string (optional)", "attendees": "comma-separated emails (optional)"}}
-            ```
-            * **Example:** "Reschedule dentist appointment to next Wednesday at 4 PM." (Assume next Wednesday is {next_wednesday_date}) -> `{{"action": "update_event", "title_keywords": "dentist appointment", "start_datetime": "{next_wednesday_date}T16:00:00"}}`
+5.  **Update an Event:**
+    ```json
+    {{"action": "update_event", "event_id": "string (optional, if known)", "title_keywords": "string (optional, to identify event by title if ID not given)", "title": "string (optional, new title)", "description": "string (optional)", "start_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "end_datetime": "YYYY-MM-DDTHH:MM:SS (optional)", "location": "string (optional)", "attendees": "comma-separated emails (optional)"}}
+    ```
+    * **Example:** "Reschedule dentist appointment to next Wednesday at 4 PM." (Current date: {current_date}, next Wednesday: {next_wednesday_date}) -> `{{"action": "update_event", "title_keywords": "dentist appointment", "start_datetime": "{next_wednesday_date}T16:00:00"}}`
 
-        6.  **Delete an Event:**
-            ```json
-            {{"action": "delete_event", "event_id": "string (required, if identifiable)", "title_keywords": "string (optional, keywords to identify event by title if ID not given)"}}
-            ```
-            * **Example:** "Cancel the project review meeting." -> `{{"action": "delete_event", "title_keywords": "project review meeting"}}`
+6.  **Delete an Event:**
+    ```json
+    {{"action": "delete_event", "event_id": "string (optional, if known)", "title_keywords": "string (optional, to identify event by title if ID not given)"}}
+    ```
+    * **Example:** "Cancel the project review meeting." -> `{{"action": "delete_event", "title_keywords": "project review meeting"}}`
 
-        7.  **Create a Course:**
-            ```json
-            {{"action": "create_course", "name": "string (required)", "description": "string (optional)", "instructor": "string (optional)", "schedule": "string (optional)", "start_date": "YYYY-MM-DD (optional)", "end_date": "YYYY-MM-DD (optional)"}}
-            ```
-            * **Example:** "Add my new course: Data Structures, instructor John Doe, starts next month." (Assume next month starts {next_month_start_date}) -> `{{"action": "create_course", "name": "Data Structures", "description": null, "instructor": "John Doe", "schedule": null, "start_date": "{next_month_start_date}", "end_date": null}}`
+7.  **Create a Course:**
+    ```json
+    {{"action": "create_course", "name": "string (required)", "description": "string (optional)", "instructor": "string (optional)", "schedule": "string (optional)", "start_date": "YYYY-MM-DD (optional)", "end_date": "YYYY-MM-DD (optional)"}}
+    ```
+    * **Example:** "Add my new course: Data Structures, instructor John Doe, starts next month." (Current date: {current_date}, next month starts: {next_month_start_date}) -> `{{"action": "create_course", "name": "Data Structures", "instructor": "John Doe", "start_date": "{next_month_start_date}"}}`
 
-        8.  **Update a Course:**
-            ```json
-            {{"action": "update_course", "course_id": "string (required, if identifiable)", "name_keywords": "string (optional, keywords to identify course by name if ID not given)", "name": "string (optional)", "description": "string (optional)", "instructor": "string (optional)", "schedule": "string (optional)", "start_date": "YYYY-MM-DD (optional)", "end_date": "YYYY-MM-DD (optional)"}}
-            ```
-            * **Example:** "Change Data Structures instructor to Jane Smith." -> `{{"action": "update_course", "name_keywords": "Data Structures", "instructor": "Jane Smith"}}`
+8.  **Update a Course:**
+    ```json
+    {{"action": "update_course", "course_id": "string (optional, if known)", "name_keywords": "string (optional, to identify course by name if ID not given)", "name": "string (optional, new name)", "description": "string (optional)", "instructor": "string (optional)", "schedule": "string (optional)", "start_date": "YYYY-MM-DD (optional)", "end_date": "YYYY-MM-DD (optional)"}}
+    ```
+    * **Example:** "Change Data Structures instructor to Jane Smith." -> `{{"action": "update_course", "name_keywords": "Data Structures", "instructor": "Jane Smith"}}`
 
-        9.  **Delete a Course:**
-            ```json
-            {{"action": "delete_course", "course_id": "string (required, if identifiable)", "name_keywords": "string (optional, keywords to identify course by name if ID not given)"}}
-            ```
-            * **Example:** "Remove the course called Linear Algebra." -> `{{"action": "delete_course", "name_keywords": "Linear Algebra"}}`
+9.  **Delete a Course:**
+    ```json
+    {{"action": "delete_course", "course_id": "string (optional, if known)", "name_keywords": "string (optional, to identify course by name if ID not given)"}}
+    ```
+    * **Example:** "Remove the course called Linear Algebra." -> `{{"action": "delete_course", "name_keywords": "Linear Algebra"}}`
 
-        10. **Retrieve All (Tasks/Events/Courses - or specific type):**
-            ```json
-            {{"action": "retrieve_items", "item_type": "tasks|events|courses|all (optional, default 'all')", "status": "pending|in-progress|completed|cancelled|all (optional, for tasks)", "priority": "low|medium|high (optional, for tasks)", "date": "YYYY-MM-DD (optional, for events)", "date_range_start": "YYYY-MM-DD (optional, for events)", "date_range_end": "YYYY-MM-DD (optional, for events)", "keywords": "string (optional, for title/name search)"}}
-            ```
-            * **Examples:**
-                * "List my pending tasks." -> `{{"action": "retrieve_items", "item_type": "tasks", "status": "pending"}}`
-                * "Show me all events for next week." (Assume next week is {next_week_start_date} to {next_week_end_date}) -> `{{"action": "retrieve_items", "item_type": "events", "date_range_start": "{next_week_start_date}", "date_range_end": "{next_week_end_date}"}}`
-                * "What courses do I have?" -> `{{"action": "retrieve_items", "item_type": "courses"}}`
+10. **Retrieve Items (Tasks, Events, Courses):**
+    ```json
+    {{"action": "retrieve_items", "item_type": "tasks|events|courses|all (optional, default 'all')", "status": "pending|in-progress|completed|cancelled|all (optional, for tasks)", "priority": "low|medium|high (optional, for tasks)", "date": "YYYY-MM-DD (optional, for events on a specific day)", "date_range_start": "YYYY-MM-DD (optional, for events in a range)", "date_range_end": "YYYY-MM-DD (optional, for events in a range)", "keywords": "string (optional, for title/name search)"}}
+    ```
+    * **Examples:**
+        * "List my pending tasks." -> `{{"action": "retrieve_items", "item_type": "tasks", "status": "pending"}}`
+        * "Show me all events for next week." (Current date: {current_date}, next week: {next_week_start_date} to {next_week_end_date}) -> `{{"action": "retrieve_items", "item_type": "events", "date_range_start": "{next_week_start_date}", "date_range_end": "{next_week_end_date}"}}`
+        * "What courses do I have?" -> `{{"action": "retrieve_items", "item_type": "courses"}}`
 
-        11. **General Conversation / No Specific Action:**
-            ```json
-            {{"action": "respond_conversation", "response_text": "string"}}
-            ```
-            * **Examples:**
-                * "Hello Kairo!" -> `{{"action": "respond_conversation", "response_text": "Hello! How can I assist you today?"}}`
-                * "Tell me a joke." -> `{{"action": "respond_conversation", "response_text": "Why don't scientists trust atoms? Because they make up everything!"}}`
-                * "What's the weather like?" -> `{{"action": "respond_conversation", "response_text": "I can only help you manage your tasks, events, and courses. I cannot provide weather updates."}}`
-                * "How are you?" -> `{{"action": "respond_conversation", "response_text": "I am an AI, so I don't have feelings, but I'm ready to help!"}}`
+11. **General Conversation / No Specific Action:**
+    ```json
+    {{"action": "respond_conversation", "response_text": "string (your conversational reply)"}}
+    ```
+    * **Use this if the user's query does not map to any of the above actions or if more information is needed.**
+    * **Examples:**
+        * "Hello Kairo!" -> `{{"action": "respond_conversation", "response_text": "Hello! How can I assist you today?"}}`
+        * "Tell me a joke." -> `{{"action": "respond_conversation", "response_text": "Why don't scientists trust atoms? Because they make up everything!"}}`
+        * "What's the weather like?" -> `{{"action": "respond_conversation", "response_text": "I can help you manage your tasks, events, and courses. I'm unable to provide weather updates."}}`
 
-        **Important Guidelines for Kairo:**
-        * Calculate specific YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS dates/datetimes for relative terms (e.g., "today", "tomorrow", "next Monday", "next week", "next month") based on the current date: **{current_date}**.
-        * If the user asks to update or delete an item and doesn't provide an ID, assume `title_keywords` or `name_keywords` and fill that field with keywords from their message. If the item type is ambiguous (e.g., "delete the report"), ask for clarification.
-        * If a request is ambiguous or requires more information for a structured action, default to `respond_conversation` and ask for clarification, or provide a helpful general response.
-        * If the user asks for something completely outside the scope of available actions (e.g., "What's the capital of France?"), use `respond_conversation` and gently remind them of your capabilities regarding tasks, events, and courses.
-        * Use the provided `conversation_history_list` to maintain context for follow-up questions.
-        * When inferring `title_keywords` or `name_keywords`, be as precise as possible, taking into account the full user message.
+        **Important Guidelines:**
+        * **Date & Time:** Accurately calculate dates/datetimes for relative terms (e.g., "today", "tomorrow", "next Monday", "next week", "next month") based on the **Current Date: {current_date}**. For due_datetime or start_datetime, if only a date is provided, assume end-of-day (23:59:59) for tasks or a sensible default time for events if not specified.
+        * **Identification:** If the user asks to update or delete an item and doesn't provide an ID, use `title_keywords` (for tasks/events) or `name_keywords` (for courses) and fill that field with keywords from their message. If the item type is ambiguous (e.g., "delete the report"), ask for clarification.
+        * **Ambiguity:** If a request is ambiguous or requires more information for a structured action, default to `respond_conversation` and ask for clarification, or provide a helpful general response.
+        * **Out of Scope:** For requests unrelated to tasks, events, or courses, use `respond_conversation` to gently guide the user.
+        * **Context:** Use `Conversation History` for context in follow-up questions.
+        * **Keywords:** When inferring keywords, be precise.
 
         Current Date: {current_date}
 
-        Conversation History:
+        Conversation History (most recent first):
         {conversation_history_json}
 
         User Message: "{user_message}"
 
         Your JSON Action:
     """
-    
+
     # Calculate dynamic dates for examples
     today = datetime.date.today()
     tomorrow = today + datetime.timedelta(days=1)
-    next_friday = today + datetime.timedelta(days=(4 - today.weekday() + 7) % 7) # Friday is weekday 4
-    next_monday = today + datetime.timedelta(days=(0 - today.weekday() + 7) % 7) # Monday is weekday 0
-    next_wednesday = today + datetime.timedelta(days=(2 - today.weekday() + 7) % 7) # Wednesday is weekday 2
-    
-    # Calculate start of next month
+    next_friday = today + datetime.timedelta(days=(4 - today.weekday() + 7) % 7)
+    next_monday = today + datetime.timedelta(days=(0 - today.weekday() + 7) % 7)
+    next_wednesday = today + datetime.timedelta(days=(2 - today.weekday() + 7) % 7)
+
     if today.month == 12:
         next_month_start = datetime.date(today.year + 1, 1, 1)
     else:
         next_month_start = datetime.date(today.year, today.month + 1, 1)
 
-    # Calculate next week's start and end dates (Mon-Sun)
     start_of_current_week = today - datetime.timedelta(days=today.weekday())
     next_week_start_date = start_of_current_week + datetime.timedelta(weeks=1)
     next_week_end_date = next_week_start_date + datetime.timedelta(days=6)
 
-    # Format the system prompt template with dynamic dates and history
     formatted_system_prompt = system_prompt_template.format(
         current_date=current_date_str,
         tomorrow_date=tomorrow.isoformat(),
@@ -501,317 +670,214 @@ def parse_ai_action(user_message, conversation_history_list):
         next_month_start_date=next_month_start.isoformat(),
         next_week_start_date=next_week_start_date.isoformat(),
         next_week_end_date=next_week_end_date.isoformat(),
-        conversation_history_json=json.dumps(conversation_history_list), # Insert JSON string of history
+        conversation_history_json=json.dumps(conversation_history_list),
         user_message=user_message
     )
 
     messages_for_ollama = [
         {"role": "system", "content": formatted_system_prompt},
-        {"role": "user", "content": user_message} # The current user message, directly
+        {"role": "user", "content": user_message}
     ]
 
     try:
         raw_response = get_ollama_response(messages_for_ollama)
-        print(f"Ollama raw action response: {raw_response}")
-
-        # Attempt to clean the response if it contains markdown or extra text outside JSON
         match = re.search(r'\{.*\}', raw_response, re.DOTALL)
         if match:
             json_string = match.group(0)
         else:
-            json_string = raw_response.strip() # Assume it's just JSON if no markdown
-        
+            # Fallback if no clear JSON block is found, try to clean common issues
+            json_string = raw_response.strip().replace("```json", "").replace("```", "").strip()
+
         parsed_action = json.loads(json_string)
         return parsed_action
     except json.JSONDecodeError as e:
-        print(f"Failed to parse AI action JSON: {raw_response} - Error: {e}")
-        raise APIError("Kairo understood your request but generated an invalid action format. Please try rephrasing.", 500)
-    except Exception as e:
-        print(f"Error in parse_ai_action: {e}")
+        app.logger.error(f"Failed to parse AI action JSON. Raw response: '{raw_response}'. Error: {e}")
+        # Try to provide a more specific error if the cleaned string is short/empty
+        if not json_string or len(json_string) < 2: # e.g. empty or just "{"
+             raise APIError(f"Kairo's response was empty or not valid JSON. Raw: '{raw_response}'", 500)
+        raise APIError(f"Kairo understood your request but had trouble formatting its response. Please try rephrasing. (Details: {e}) Raw: '{raw_response}'", 500)
+    except Exception as e: # Catch other exceptions from get_ollama_response or parsing
+        app.logger.error(f"Error in parse_ai_action: {e}", exc_info=True)
         raise APIError("Kairo encountered an issue parsing your request into an action. Please try again.", 500)
 
 
 def process_ai_action(user_id, parsed_action):
-    """
-    Executes the identified AI action using the backend functions.
-    Returns a user-friendly message about the action's success or failure,
-    and potentially lists of items if a retrieval action was performed.
-    """
+    if not parsed_action or not isinstance(parsed_action, dict):
+        raise APIError("Invalid action format received from AI.", 500)
+
     action_type = parsed_action.get('action')
-    response_message = "I couldn't understand that action or perform it."
-    
-    # Initialize lists to return for frontend updates
-    tasks_result = []
-    events_result = []
-    courses_result = []
+    tasks_result, events_result, courses_result = [], [], []
+    response_message = ""
+
+    if not action_type:
+        response_message = parsed_action.get('response_text', "I couldn't understand the specific action. Please rephrase.")
+        return response_message, [], [], []
 
     try:
         if action_type == "create_task":
-            task_obj = add_task_to_db(
-                user_id=user_id,
-                title=parsed_action.get('title'),
-                description=parsed_action.get('description'),
-                due_datetime=parsed_action.get('due_datetime'),
-                priority=parsed_action.get('priority'),
-                status=parsed_action.get('status'),
-                tags=parsed_action.get('tags'),
-                course_id=parsed_action.get('course_id'),
-                parent_id=parsed_action.get('parent_id')
-            )
-            if task_obj:
-                response_message = f"Task '{task_obj['title']}' created successfully (ID: {task_obj['task_id']})."
-            else:
-                response_message = "Failed to create task."
-            tasks_result = get_all_tasks_for_user(user_id) # Refresh list
+            if not parsed_action.get('title'): raise APIError("Task title is required.", 400)
+            due_date_str = parsed_action.get('due_date')
+            due_date_iso = get_iso_datetime(due_date_str) if due_date_str else None
+            if due_date_str and not due_date_iso: raise APIError(f"Invalid due_date format: {due_date_str}.", 400)
 
-        elif action_type == "update_task":
-            task_id_or_keywords = parsed_action.get('task_id') or parsed_action.get('title_keywords')
-            if not task_id_or_keywords:
-                response_message = "Please provide a Task ID or keywords from its title to update."
-            else:
-                target_task = None
-                if parsed_action.get('task_id'):
-                    target_task = get_task_by_id(user_id, parsed_action['task_id'])
-                elif parsed_action.get('title_keywords'):
-                    all_tasks = get_all_tasks_for_user(user_id)
-                    matching_tasks = [t for t in all_tasks if parsed_action['title_keywords'].lower() in t['title'].lower()]
-                    if len(matching_tasks) == 1:
-                        target_task = matching_tasks[0]
-                    elif len(matching_tasks) > 1:
-                        response_message = "Multiple tasks match your description. Please be more specific or provide the Task ID."
-                        return response_message, [], [], []
-                
-                if target_task:
-                    updates = {k: v for k, v in parsed_action.items() if k not in ['action', 'task_id', 'title_keywords']}
-                    if update_task_in_db(target_task['task_id'], user_id, updates):
-                        response_message = f"Task '{target_task['title']}' updated successfully."
-                    else:
-                        response_message = f"Failed to update task '{target_task['title']}'. No changes applied or task not found."
+            task_data = {
+                "user_id": user_id, "title": parsed_action.get('title'),
+                "description": parsed_action.get('description'), "due_date": due_date_iso,
+                "priority": parsed_action.get('priority', 'medium'), "status": parsed_action.get('status', 'pending'),
+                "tags": parsed_action.get('tags'), "course_id": parsed_action.get('course_id'),
+                "parent_id": parsed_action.get('parent_id'), "task_id": generate_unique_id("task"),
+                "created_at": datetime.datetime.now().isoformat(), "updated_at": datetime.datetime.now().isoformat()
+            }
+            if task_data['priority'] not in ['low', 'medium', 'high']: raise APIError("Invalid priority.", 400)
+            if task_data['status'] not in ['pending', 'in-progress', 'completed', 'cancelled']: raise APIError("Invalid status.", 400)
+
+            task_obj = save_task_to_db(task_data)
+            response_message = f"Task '{task_obj['title']}' created (ID: {task_obj['task_id']})."
+            tasks_result = get_tasks_from_db(user_id)
+
+        elif action_type in ["update_task", "delete_task"]:
+            task_id = parsed_action.get('task_id')
+            title_keywords = parsed_action.get('title_keywords')
+            if not task_id and not title_keywords: raise APIError("Task ID or title keywords required.", 400)
+
+            target_task = None
+            if task_id:
+                target_task = get_task_by_id_from_db(task_id, user_id)
+            else: # title_keywords
+                all_user_tasks = get_tasks_from_db(user_id)
+                matching_tasks = [t for t in all_user_tasks if title_keywords.lower() in t['title'].lower()]
+                if not matching_tasks: raise APIError(f"No task found with keywords '{title_keywords}'.", 404)
+                if len(matching_tasks) > 1:
+                    ids = ", ".join([t['task_id'] for t in matching_tasks[:3]])
+                    raise APIError(f"Multiple tasks match '{title_keywords}'. Use Task ID. Matches: {ids}", 400)
+                target_task = matching_tasks[0]
+
+            if not target_task: raise APIError("Task not found.", 404)
+
+            if action_type == "update_task":
+                updates = {k: v for k, v in parsed_action.items() if k not in ['action', 'task_id', 'title_keywords', 'user_id'] and v is not None}
+                if not updates: raise APIError("No update information provided.", 400)
+                # due_date validation for update is handled by update_task_in_db
+                if update_task_in_db(target_task['task_id'], user_id, updates):
+                    response_message = f"Task '{target_task['title']}' updated."
                 else:
-                    response_message = "Task not found."
-            tasks_result = get_all_tasks_for_user(user_id) # Refresh list
-
-        elif action_type == "delete_task":
-            task_id_or_keywords = parsed_action.get('task_id') or parsed_action.get('title_keywords')
-            if not task_id_or_keywords:
-                response_message = "Please provide a Task ID or keywords from its title to delete."
-            else:
-                target_task = None
-                if parsed_action.get('task_id'):
-                    target_task = get_task_by_id(user_id, parsed_action['task_id'])
-                elif parsed_action.get('title_keywords'):
-                    all_tasks = get_all_tasks_for_user(user_id)
-                    matching_tasks = [t for t in all_tasks if parsed_action['title_keywords'].lower() in t['title'].lower()]
-                    if len(matching_tasks) == 1:
-                        target_task = matching_tasks[0]
-                    elif len(matching_tasks) > 1:
-                        response_message = "Multiple tasks match your description. Please be more specific or provide the Task ID."
-                        return response_message, [], [], []
-
-                if target_task:
-                    if delete_task_from_db(target_task['task_id'], user_id):
-                        response_message = f"Task '{target_task['title']}' deleted successfully."
-                    else:
-                        response_message = f"Failed to delete task '{target_task['title']}'. Task not found."
-                else:
-                    response_message = "Task not found."
-            tasks_result = get_all_tasks_for_user(user_id) # Refresh list
+                    response_message = f"Task '{target_task['title']}' not updated (no changes or issue)."
+            elif action_type == "delete_task":
+                if delete_task_from_db(user_id, target_task['task_id']):
+                    response_message = f"Task '{target_task['title']}' deleted."
+                else: raise APIError(f"Failed to delete task '{target_task['title']}'.", 500)
+            tasks_result = get_tasks_from_db(user_id)
 
         elif action_type == "create_event":
-            event_obj = add_event_to_db(
-                user_id=user_id,
-                title=parsed_action.get('title'),
-                start_datetime=parsed_action.get('start_datetime'),
-                description=parsed_action.get('description'),
-                end_datetime=parsed_action.get('end_datetime'),
-                location=parsed_action.get('location'),
-                attendees=parsed_action.get('attendees')
-            )
-            if event_obj:
-                response_message = f"Event '{event_obj['title']}' created successfully (ID: {event_obj['event_id']})."
+            if not parsed_action.get('title') or not parsed_action.get('start_datetime'):
+                raise APIError("Event title and start_datetime are required.", 400)
+            event_obj = add_event_to_db(user_id=user_id, **{k:v for k,v in parsed_action.items() if k not in ['action', 'user_id']})
+            response_message = f"Event '{event_obj['title']}' created (ID: {event_obj['event_id']})."
+            events_result = get_all_events_for_user(user_id)
+
+        elif action_type in ["update_event", "delete_event"]:
+            event_id = parsed_action.get('event_id')
+            title_keywords = parsed_action.get('title_keywords')
+            if not event_id and not title_keywords: raise APIError("Event ID or title keywords required.", 400)
+
+            target_event = None
+            if event_id: target_event = get_event_by_id(user_id, event_id)
             else:
-                response_message = "Failed to create event."
-            events_result = get_all_events_for_user(user_id) # Refresh list
+                all_user_events = get_all_events_for_user(user_id)
+                matching_events = [e for e in all_user_events if title_keywords.lower() in e['title'].lower()]
+                if not matching_events: raise APIError(f"No event found with keywords '{title_keywords}'.", 404)
+                if len(matching_events) > 1:
+                    ids = ", ".join([e['event_id'] for e in matching_events[:3]])
+                    raise APIError(f"Multiple events match '{title_keywords}'. Use Event ID. Matches: {ids}", 400)
+                target_event = matching_events[0]
 
-        elif action_type == "update_event":
-            event_id_or_keywords = parsed_action.get('event_id') or parsed_action.get('title_keywords')
-            if not event_id_or_keywords:
-                response_message = "Please provide an Event ID or keywords from its title to update."
-            else:
-                target_event = None
-                if parsed_action.get('event_id'):
-                    target_event = get_event_by_id(user_id, parsed_action['event_id'])
-                elif parsed_action.get('title_keywords'):
-                    all_events = get_all_events_for_user(user_id)
-                    matching_events = [e for e in all_events if parsed_action['title_keywords'].lower() in e['title'].lower()]
-                    if len(matching_events) == 1:
-                        target_event = matching_events[0]
-                    elif len(matching_events) > 1:
-                        response_message = "Multiple events match your description. Please be more specific or provide the Event ID."
-                        return response_message, [], [], []
+            if not target_event: raise APIError("Event not found.", 404)
 
-                if target_event:
-                    updates = {k: v for k, v in parsed_action.items() if k not in ['action', 'event_id', 'title_keywords']}
-                    if update_event_in_db(target_event['event_id'], user_id, updates):
-                        response_message = f"Event '{target_event['title']}' updated successfully."
-                    else:
-                        response_message = f"Failed to update event '{target_event['title']}'. No changes applied or event not found."
-                else:
-                    response_message = "Event not found."
-            events_result = get_all_events_for_user(user_id) # Refresh list
-
-        elif action_type == "delete_event":
-            event_id_or_keywords = parsed_action.get('event_id') or parsed_action.get('title_keywords')
-            if not event_id_or_keywords:
-                response_message = "Please provide an Event ID or keywords from its title to delete."
-            else:
-                target_event = None
-                if parsed_action.get('event_id'):
-                    target_event = get_event_by_id(user_id, parsed_action['event_id'])
-                elif parsed_action.get('title_keywords'):
-                    all_events = get_all_events_for_user(user_id)
-                    matching_events = [e for e in all_events if parsed_action['title_keywords'].lower() in e['title'].lower()]
-                    if len(matching_events) == 1:
-                        target_event = matching_events[0]
-                    elif len(matching_events) > 1:
-                        response_message = "Multiple events match your description. Please be more specific or provide the Event ID."
-                        return response_message, [], [], []
-
-                if target_event:
-                    if delete_event_from_db(target_event['event_id'], user_id):
-                        response_message = f"Event '{target_event['title']}' deleted successfully."
-                    else:
-                        response_message = f"Failed to delete event '{target_event['title']}'. Event not found."
-                else:
-                    response_message = "Event not found."
-            events_result = get_all_events_for_user(user_id) # Refresh list
+            if action_type == "update_event":
+                updates = {k:v for k,v in parsed_action.items() if k not in ['action', 'event_id', 'title_keywords', 'user_id'] and v is not None}
+                if not updates: raise APIError("No update info for event.", 400)
+                if update_event_in_db(target_event['event_id'], user_id, updates):
+                    response_message = f"Event '{target_event['title']}' updated."
+                else: response_message = f"Event '{target_event['title']}' not updated."
+            elif action_type == "delete_event":
+                if delete_event_from_db(target_event['event_id'], user_id):
+                    response_message = f"Event '{target_event['title']}' deleted."
+                else: raise APIError(f"Failed to delete event '{target_event['title']}'.", 500)
+            events_result = get_all_events_for_user(user_id)
 
         elif action_type == "create_course":
-            course_obj = add_course_to_db(
-                user_id=user_id,
-                name=parsed_action.get('name'),
-                description=parsed_action.get('description'),
-                instructor=parsed_action.get('instructor'),
-                schedule=parsed_action.get('schedule'),
-                start_date=parsed_action.get('start_date'),
-                end_date=parsed_action.get('end_date')
-            )
-            if course_obj:
-                response_message = f"Course '{course_obj['name']}' created successfully (ID: {course_obj['course_id']})."
-            else:
-                response_message = "Failed to create course."
-            courses_result = get_all_courses_for_user(user_id) # Refresh list
+            if not parsed_action.get('name'): raise APIError("Course name required.", 400)
+            course_obj = add_course_to_db(user_id=user_id, **{k:v for k,v in parsed_action.items() if k not in ['action', 'user_id']})
+            response_message = f"Course '{course_obj['name']}' created (ID: {course_obj['course_id']})."
+            courses_result = get_all_courses_for_user(user_id)
 
-        elif action_type == "update_course":
-            course_id_or_keywords = parsed_action.get('course_id') or parsed_action.get('name_keywords')
-            if not course_id_or_keywords:
-                response_message = "Please provide a Course ID or keywords from its name to update."
-            else:
-                target_course = None
-                if parsed_action.get('course_id'):
-                    target_course = get_course_by_id(user_id, parsed_action['course_id'])
-                elif parsed_action.get('name_keywords'):
-                    all_courses = get_all_courses_for_user(user_id)
-                    matching_courses = [c for c in all_courses if parsed_action['name_keywords'].lower() in c['name'].lower()]
-                    if len(matching_courses) == 1:
-                        target_course = matching_courses[0]
-                    elif len(matching_courses) > 1:
-                        response_message = "Multiple courses match your description. Please be more specific or provide the Course ID."
-                        return response_message, [], [], []
-                
-                if target_course:
-                    updates = {k: v for k, v in parsed_action.items() if k not in ['action', 'course_id', 'name_keywords']}
-                    if update_course_in_db(target_course['course_id'], user_id, updates):
-                        response_message = f"Course '{target_course['name']}' updated successfully."
-                    else:
-                        response_message = f"Failed to update course '{target_course['name']}'. No changes applied or course not found."
-                else:
-                    response_message = "Course not found."
-            courses_result = get_all_courses_for_user(user_id) # Refresh list
+        elif action_type in ["update_course", "delete_course"]:
+            course_id = parsed_action.get('course_id')
+            name_keywords = parsed_action.get('name_keywords')
+            if not course_id and not name_keywords: raise APIError("Course ID or name keywords required.", 400)
 
-        elif action_type == "delete_course":
-            course_id_or_keywords = parsed_action.get('course_id') or parsed_action.get('name_keywords')
-            if not course_id_or_keywords:
-                response_message = "Please provide a Course ID or keywords from its name to delete."
+            target_course = None
+            if course_id: target_course = get_course_by_id(user_id, course_id)
             else:
-                target_course = None
-                if parsed_action.get('course_id'):
-                    target_course = get_course_by_id(user_id, parsed_action['course_id'])
-                elif parsed_action.get('name_keywords'):
-                    all_courses = get_all_courses_for_user(user_id)
-                    matching_courses = [c for c in all_courses if parsed_action['name_keywords'].lower() in c['name'].lower()]
-                    if len(matching_courses) == 1:
-                        target_course = matching_courses[0]
-                    elif len(matching_courses) > 1:
-                        response_message = "Multiple courses match your description. Please be more specific or provide the Course ID."
-                        return response_message, [], [], []
+                all_user_courses = get_all_courses_for_user(user_id)
+                matching_courses = [c for c in all_user_courses if name_keywords.lower() in c['name'].lower()]
+                if not matching_courses: raise APIError(f"No course with keywords '{name_keywords}'.", 404)
+                if len(matching_courses) > 1:
+                    ids = ", ".join([c['course_id'] for c in matching_courses[:3]])
+                    raise APIError(f"Multiple courses match '{name_keywords}'. Use ID. Matches: {ids}", 400)
+                target_course = matching_courses[0]
 
-                if target_course:
-                    if delete_course_from_db(target_course['course_id'], user_id):
-                        response_message = f"Course '{target_course['name']}' deleted successfully."
-                    else:
-                        response_message = f"Failed to delete course '{target_course['name']}'. Course not found."
-                else:
-                    response_message = "Course not found."
-            courses_result = get_all_courses_for_user(user_id) # Refresh list
+            if not target_course: raise APIError("Course not found.", 404)
+
+            if action_type == "update_course":
+                updates = {k:v for k,v in parsed_action.items() if k not in ['action', 'course_id', 'name_keywords', 'user_id'] and v is not None}
+                if not updates: raise APIError("No update info for course.", 400)
+                if update_course_in_db(target_course['course_id'], user_id, updates):
+                    response_message = f"Course '{target_course['name']}' updated."
+                else: response_message = f"Course '{target_course['name']}' not updated."
+            elif action_type == "delete_course":
+                if delete_course_from_db(target_course['course_id'], user_id):
+                    response_message = f"Course '{target_course['name']}' deleted."
+                else: raise APIError(f"Failed to delete course '{target_course['name']}'.", 500)
+            courses_result = get_all_courses_for_user(user_id)
 
         elif action_type == "retrieve_items":
             item_type = parsed_action.get('item_type', 'all')
-            response_items_summary = [] # For the AI's conversational response
-            
+            summaries = []
             if item_type == 'tasks' or item_type == 'all':
-                tasks_result = get_all_tasks_for_user(user_id)
-                # Apply filters here if needed based on parsed_action (status, priority, date_range, keywords)
-                # For simplicity, returning all tasks for now, filtering logic can be added here
-                if tasks_result:
-                    response_items_summary.append("Tasks:")
-                    for t in tasks_result:
-                        status_text = f" ({t['status']})" if t['status'] != 'pending' else ''
-                        due_text = f" (Due: {t['due_datetime'].split('T')[0]})" if t['due_datetime'] else ''
-                        response_items_summary.append(f"- {t['title']}{due_text}{status_text}")
-                else:
-                    response_items_summary.append("No tasks found.")
-
+                tasks_result = get_tasks_from_db(user_id)
+                if tasks_result: summaries.append(f"Tasks ({len(tasks_result)}): " + ", ".join([t['title'] for t in tasks_result[:5]])) # show first 5
+                else: summaries.append("No tasks found.")
             if item_type == 'events' or item_type == 'all':
                 events_result = get_all_events_for_user(user_id)
-                # Apply filters here if needed (date, date_range, keywords)
-                if events_result:
-                    response_items_summary.append("Events:")
-                    for e in events_result:
-                        start_date_text = e['start_datetime'].split('T')[0] if e['start_datetime'] else 'N/A'
-                        response_items_summary.append(f"- {e['title']} (Starts: {start_date_text})")
-                else:
-                    response_items_summary.append("No events found.")
-
+                if events_result: summaries.append(f"Events ({len(events_result)}): " + ", ".join([e['title'] for e in events_result[:5]]))
+                else: summaries.append("No events found.")
             if item_type == 'courses' or item_type == 'all':
                 courses_result = get_all_courses_for_user(user_id)
-                # Apply filters here if needed (keywords, instructor)
-                if courses_result:
-                    response_items_summary.append("Courses:")
-                    for c in courses_result:
-                        response_items_summary.append(f"- {c['name']} (Instructor: {c['instructor'] or 'N/A'})")
-                else:
-                    response_items_summary.append("No courses found.")
-
-            response_message = "\n".join(response_items_summary)
-            if not response_message:
-                response_message = "I couldn't find any items matching your criteria."
+                if courses_result: summaries.append(f"Courses ({len(courses_result)}): " + ", ".join([c['name'] for c in courses_result[:5]]))
+                else: summaries.append("No courses found.")
+            response_message = "\n".join(summaries) if summaries else "No items found matching your criteria."
 
         elif action_type == "respond_conversation":
             response_message = parsed_action.get('response_text', "I'm not sure how to respond to that.")
-        
-        else:
-            response_message = "I'm not sure how to process that request. Can you try rephrasing or asking for a task, event, or course related action?"
 
-    except APIError as e:
-        response_message = f"Error: {e.message}"
-    except Exception as e:
-        print(f"Unexpected error in process_ai_action: {e}")
-        response_message = "An internal error occurred while processing your request. Please try again."
+        else:
+            raise APIError(f"Unknown action type: {action_type}", 400)
+
+    except APIError as e_api: # Catch APIErrors raised by DB functions or validation
+        app.logger.warning(f"APIError in process_ai_action: {e_api.message} (Status: {e_api.status_code}) - Action: {action_type}")
+        response_message = e_api.message # Use the error message from APIError
+        # Depending on desired behavior, you might want to re-raise or handle differently
+    except Exception as e_unexpected: # Catch any other unexpected errors
+        app.logger.error(f"Unexpected error in process_ai_action for action '{action_type}': {e_unexpected}", exc_info=True)
+        response_message = "An internal server error occurred while processing your request."
+        # Re-raise to be caught by global error handler, ensuring a 500 response
+        if not isinstance(e_unexpected, APIError): # Should not happen if APIError is caught above
+             raise e_unexpected
 
     return response_message, tasks_result, events_result, courses_result
 
-# --- Flask Routes ---
+# --- API Routes ---
 
 @app.route('/')
 def home():
@@ -820,83 +886,90 @@ def home():
 @app.route('/chat', methods=['POST'])
 def chat():
     data = request.get_json()
-    user_message = data.get('message')
+    if not data: raise APIError("Request body must be JSON.", 400)
+
     user_id = data.get('user_id')
+    user_message = data.get('message')
     kairo_style = data.get('kairo_style', 'friendly')
 
-    if not user_message or not user_id:
-        raise APIError("User ID and message are required.", 400)
+    if not user_id: raise APIError("User ID is required.", 400)
+    if not user_message: raise APIError("Message is required.", 400)
 
     db = get_db()
-    # Fetch recent conversation history from DB
-    cursor = db.execute(
-        "SELECT sender, message, parsed_action FROM conversation_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10",
-        (user_id,) # Limit to last 10 entries for context
+    cursor = db.cursor()
+    cursor.execute(
+        "SELECT sender, message FROM conversation_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 10", (user_id,)
     )
-    # Reconstruct messages list for Ollama, keeping roles
-    conversation_history_list = []
-    for row in cursor.fetchall():
-        conversation_history_list.append({"role": row['sender'], "content": row['message']})
-        # Optionally, you could also add the AI's parsed_action to the history if it helps context for the LLM
-        # if row['parsed_action']:
-        #     try:
-        #         parsed_action_from_history = json.loads(row['parsed_action'])
-        #         conversation_history_list.append({"role": "assistant", "content": f"Action taken: {parsed_action_from_history.get('action')}"})
-        #     except:
-        #         pass
-
+    conversation_history_list = [{"role": row['sender'], "content": row['message']} for row in cursor.fetchall()]
+    conversation_history_list.reverse()
 
     ai_response_message = ""
-    tasks_data = []
-    events_data = []
-    courses_data = []
-    parsed_action = None # Initialize parsed_action to None
+    tasks_data, events_data, courses_data = [], [], []
+    parsed_action_for_log = None
+    error_occurred = False # Flag to check if error was handled by APIError block
 
     try:
-        # Attempt to parse action directly from the prompt
-        # Send the full history including current message for action parsing
-        parsed_action = parse_ai_action(user_message, conversation_history_list)
-        
-        # If an action is parsed, get a confirmation message from process_ai_action
-        ai_response_message, tasks_data, events_data, courses_data = process_ai_action(user_id, parsed_action)
-
+        parsed_action_for_log = parse_ai_action(user_message, conversation_history_list)
+        ai_response_message, tasks_data, events_data, courses_data = process_ai_action(user_id, parsed_action_for_log)
     except APIError as e:
-        ai_response_message = f"Error processing request: {e.message}"
-    except Exception as e:
-        print(f"Error during AI interaction: {e}")
-        ai_response_message = "I encountered an unexpected error while processing your request. Please try again."
+        error_occurred = True
+        ai_response_message = e.message
+        # Status code from APIError will be used by handle_api_error if this is re-raised,
+        # but here we are packaging it into a 200 response's JSON body for the chat.
+        # For the /chat endpoint, we typically want to return a 200 OK with the error message in the response body.
+        # The HTTP status code of the /chat response itself might remain 200.
+        # If we want /chat to return specific error codes (4xx, 5xx), we'd re-raise e here.
+        app.logger.warning(f"APIError in chat (handled for user response): {e.message} (Status: {e.status_code})")
+        # To ensure the correct status code is sent to the client for API errors from chat:
+        # return jsonify({"error": e.message, "parsed_action": parsed_action_for_log}), e.status_code
+        # However, the current structure logs it and returns 200 with the message in "response".
+        # Let's keep it consistent with current structure first.
+        parsed_action_for_log = parsed_action_for_log or {"action": "error", "error_details": e.message}
+    except Exception as e_unhandled:
+        error_occurred = True
+        app.logger.error(f"Unexpected error in chat endpoint: {e_unhandled}", exc_info=True)
+        ai_response_message = "I encountered an unexpected internal error. Please try again later."
+        parsed_action_for_log = {"action": "error", "error_details": str(e_unhandled)}
+        # For truly unexpected errors, it's good practice for the endpoint to return a 500.
+        # This requires re-raising or returning a specific Flask error response.
+        # For now, this will also be wrapped in a 200 OK for the chat.
+        # raise APIError(ai_response_message, 500) # Option to convert to standard API error response
 
-    # Apply Kairo style formatting to the final response message
-    if kairo_style == 'professional':
-        ai_response_message = f"Acknowledged. {ai_response_message}"
-    elif kairo_style == 'friendly':
-        ai_response_message = f"Hey there! {ai_response_message}"
-    elif kairo_style == 'concise':
-        ai_response_message = f"Kairo: {ai_response_message}"
-    elif kairo_style == 'casual':
-        ai_response_message = f"Sup! {ai_response_message}"
-    # Default is no prefix
+    # Apply Kairo style (moved after error handling to ensure message is set)
+    base_response = ai_response_message
+    if kairo_style == 'professional' and not error_occurred : base_response = f"Acknowledged. {ai_response_message}"
+    elif kairo_style == 'friendly' and not error_occurred: base_response = f"Hey there! {ai_response_message}"
+    # Concise style might not add prefix for errors or already concise messages
+    elif kairo_style == 'concise' and not error_occurred and len(ai_response_message) > 20: base_response = f"Kairo: {ai_response_message}"
+    elif kairo_style == 'casual' and not error_occurred: base_response = f"Sup! {ai_response_message}"
+    ai_response_message = base_response
 
-    # Log user and Kairo responses (and parsed action)
-    # Only log user message once it's processed and before Kairo responds
-    # The actual message that was sent to Kairo for processing was part of `conversation_history_list`
-    # Here we log the user's initial message and Kairo's final response for the conversation history table.
-    db.execute(
-        "INSERT INTO conversation_history (user_id, sender, message, parsed_action) VALUES (?, ?, ?, ?)",
-        (user_id, 'user', user_message, None) 
-    )
-    db.execute(
-        "INSERT INTO conversation_history (user_id, sender, message, parsed_action) VALUES (?, ?, ?, ?)",
-        (user_id, 'kairo', ai_response_message, json.dumps(parsed_action) if parsed_action else None)
-    )
-    db.commit()
+    # Log conversation
+    current_time = datetime.datetime.now().isoformat()
+    try:
+        cursor.execute(
+            "INSERT INTO conversation_history (user_id, sender, message, timestamp, parsed_action) VALUES (?, ?, ?, ?, ?)",
+            (user_id, 'user', user_message, current_time, None)
+        )
+        # Ensure parsed_action_for_log is a dict before attempting json.dumps
+        action_log_str = json.dumps(parsed_action_for_log) if isinstance(parsed_action_for_log, dict) else str(parsed_action_for_log)
+        cursor.execute(
+            "INSERT INTO conversation_history (user_id, sender, message, timestamp, parsed_action) VALUES (?, ?, ?, ?, ?)",
+            (user_id, 'kairo', ai_response_message, datetime.datetime.now().isoformat(),action_log_str)
+        )
+        db.commit()
+    except Exception as e_log:
+        app.logger.error(f"Error logging conversation to database: {e_log}", exc_info=True)
+
+    # If an APIError was caught and we want the /chat endpoint to reflect its status code:
+    # if isinstance(e, APIError): return jsonify({"response": ai_response_message, "parsed_action": parsed_action_for_log}), e.status_code
 
     return jsonify({
         "response": ai_response_message,
         "tasks": tasks_data,
         "events": events_data,
-        "courses": courses_data,
-        "parsed_action": parsed_action # Send parsed_action back to frontend for potential debugging
+        "courses": courses_data, # Ensure this is 'courses_data' not 'courses_result'
+        "parsed_action": parsed_action_for_log
     })
 
 # --- API Endpoints for Frontend CRUD (Direct Operations) ---
@@ -904,155 +977,236 @@ def chat():
 @app.route('/tasks', methods=['GET'])
 def get_tasks_route():
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    tasks = get_all_tasks_for_user(user_id)
-    return jsonify({"tasks": tasks})
+    if not user_id: raise APIError("User ID is required.", 400)
+    tasks = get_tasks_from_db(user_id)
+    return jsonify(tasks)
 
 @app.route('/tasks', methods=['POST'])
 def add_task_route():
     data = request.get_json()
+    if not data: raise APIError("Request body must be JSON.", 400)
+
     user_id = data.get('user_id')
     title = data.get('title')
-    if not user_id or not title:
-        raise APIError("User ID and task title are required.", 400)
-    
-    task = add_task_to_db(
-        user_id=user_id,
-        title=title,
-        description=data.get('description'),
-        due_datetime=data.get('due_datetime'),
-        priority=data.get('priority'),
-        status=data.get('status'),
-        tags=data.get('tags'),
-        course_id=data.get('course_id'),
-        parent_id=data.get('parent_id')
-    )
-    return jsonify({"message": "Task added successfully", "task": task}), 201
+
+    if not user_id: raise APIError("User ID is required.", 400)
+    if not title: raise APIError("Task title is required.", 400)
+
+    priority = data.get('priority', 'medium')
+    status = data.get('status', 'pending')
+    if priority not in ['low', 'medium', 'high']:
+        raise APIError(f"Invalid priority: {priority}.", 400)
+    if status not in ['pending', 'in-progress', 'completed', 'cancelled']:
+        raise APIError(f"Invalid status: {status}.", 400)
+
+    due_date_str = data.get('due_date')
+    due_date_iso = None
+    if due_date_str:
+        due_date_iso = get_iso_datetime(due_date_str)
+        if not due_date_iso:
+            raise APIError(f"Invalid due_date format for '{due_date_str}'. Use ISO compatible (YYYY-MM-DD, YYYY-MM-DDTHH:MM:SS, etc.).", 400)
+
+    task_data = {
+        "task_id": generate_unique_id("task"),
+        "user_id": user_id, "title": title,
+        "description": data.get('description'), "due_date": due_date_iso, # Use normalized date
+        "priority": priority, "status": status,
+        "tags": data.get("tags"), "course_id": data.get("course_id"), "parent_id": data.get("parent_id"),
+        "created_at": datetime.datetime.now().isoformat(), "updated_at": datetime.datetime.now().isoformat()
+    }
+    created_task = save_task_to_db(task_data)
+    return jsonify(created_task), 201
+
+@app.route('/tasks/<task_id>', methods=['GET'])
+def get_task_route(task_id):
+    user_id = request.args.get('user_id')
+    if not user_id: raise APIError("User ID is required.", 400)
+    task = get_task_by_id_from_db(task_id, user_id)
+    if task: return jsonify(task)
+    else: raise APIError("Task not found.", 404)
 
 @app.route('/tasks/<task_id>', methods=['PUT'])
 def update_task_route(task_id):
     data = request.get_json()
-    user_id = request.args.get('user_id') 
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    
-    if update_task_in_db(task_id, user_id, data):
-        return jsonify({"message": "Task updated successfully"})
-    else:
-        return jsonify({"error": "Task not found or no changes made."}), 404
+    if not data: raise APIError("Request body must be JSON.", 400)
+    user_id = request.args.get('user_id')
+    if not user_id: raise APIError("User ID is required as query parameter.", 400)
+
+    if not get_task_by_id_from_db(task_id, user_id):
+        raise APIError("Task not found or access denied.", 404) # Checks ownership
+
+    # Validations for fields if they are present in data
+    if 'priority' in data and data['priority'] is not None and data['priority'] not in ['low', 'medium', 'high']:
+        raise APIError(f"Invalid priority: {data['priority']}.", 400)
+    if 'status' in data and data['status'] is not None and data['status'] not in ['pending', 'in-progress', 'completed', 'cancelled']:
+        raise APIError(f"Invalid status: {data['status']}.", 400)
+    if 'due_date' in data and data['due_date'] is not None:
+        if not get_iso_datetime(data['due_date']):
+             raise APIError(f"Invalid due_date format for '{data['due_date']}'.", 400)
+
+    rows_affected = update_task_in_db(task_id, user_id, data)
+    updated_task = get_task_by_id_from_db(task_id, user_id) # Fetch regardless of rows_affected to get current state
+    if not updated_task: raise APIError("Task not found after update attempt (possibly deleted concurrently).", 404)
+
+    if rows_affected > 0:
+        return jsonify({"message": "Task updated successfully", "task": updated_task})
+    else: # No rows affected, means no changes applied or data was same
+        return jsonify({"message": "Task update processed, but no changes were made or task already in desired state.", "task": updated_task}), 200
+
 
 @app.route('/tasks/<task_id>', methods=['DELETE'])
 def delete_task_route(task_id):
-    user_id = request.args.get('user_id') 
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    
-    if delete_task_from_db(task_id, user_id):
+    user_id = request.args.get('user_id')
+    if not user_id: raise APIError("User ID is required as query parameter.", 400)
+
+    if not get_task_by_id_from_db(task_id, user_id): # Check existence and ownership
+        raise APIError("Task not found or access denied.", 404)
+
+    if delete_task_from_db(user_id, task_id):
         return jsonify({"message": "Task deleted successfully"})
     else:
-        return jsonify({"error": "Task not found."}), 404
+        # This case should be rare if the above check passed, implies a race condition or unexpected DB error
+        raise APIError("Task deletion failed. It might have been already deleted or an error occurred.", 500)
+
 
 @app.route('/events', methods=['GET'])
 def get_events_route():
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
+    if not user_id: raise APIError("User ID is required.", 400)
     events = get_all_events_for_user(user_id)
-    return jsonify({"events": events})
+    return jsonify(events)
 
 @app.route('/events', methods=['POST'])
 def add_event_route():
     data = request.get_json()
+    if not data: raise APIError("Request body must be JSON.", 400)
+
     user_id = data.get('user_id')
     title = data.get('title')
-    start_datetime = data.get('start_datetime')
-    if not user_id or not title or not start_datetime:
-        raise APIError("User ID, event title, and start date/time are required.", 400)
-    
+    start_datetime_str = data.get('start_datetime')
+
+    if not user_id: raise APIError("User ID is required.", 400)
+    if not title: raise APIError("Event title is required.", 400)
+    if not start_datetime_str: raise APIError("Event start_datetime is required.", 400)
+
+    # Date validation is handled by add_event_to_db, which calls get_iso_datetime
     event = add_event_to_db(
-        user_id=user_id,
-        title=title,
-        description=data.get('description'),
-        start_datetime=start_datetime,
-        end_datetime=data.get('end_datetime'),
-        location=data.get('location'),
-        attendees=data.get('attendees')
+        user_id=user_id, title=title, start_datetime=start_datetime_str,
+        description=data.get('description'), end_datetime=data.get('end_datetime'),
+        location=data.get('location'), attendees=data.get('attendees')
     )
     return jsonify({"message": "Event added successfully", "event": event}), 201
+
+@app.route('/events/<event_id>', methods=['GET'])
+def get_event_route(event_id):
+    user_id = request.args.get('user_id')
+    if not user_id: raise APIError("User ID is required.", 400)
+    event = get_event_by_id(user_id, event_id)
+    if event: return jsonify(event)
+    else: raise APIError("Event not found.", 404)
 
 @app.route('/events/<event_id>', methods=['PUT'])
 def update_event_route(event_id):
     data = request.get_json()
+    if not data: raise APIError("Request body must be JSON.", 400)
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    
-    if update_event_in_db(event_id, user_id, data):
-        return jsonify({"message": "Event updated successfully"})
+    if not user_id: raise APIError("User ID is required as query parameter.", 400)
+
+    if not get_event_by_id(user_id, event_id): # Check existence and ownership
+        raise APIError("Event not found or access denied.", 404)
+
+    # Date validation for start/end is handled by update_event_in_db
+    rows_affected = update_event_in_db(event_id, user_id, data)
+    updated_event = get_event_by_id(user_id, event_id)
+    if not updated_event: raise APIError("Event not found after update attempt.", 404)
+
+    if rows_affected > 0:
+        return jsonify({"message": "Event updated successfully", "event": updated_event})
     else:
-        return jsonify({"error": "Event not found or no changes made."}), 404
+        return jsonify({"message": "Event update processed, but no changes made or already in desired state.", "event": updated_event}), 200
+
 
 @app.route('/events/<event_id>', methods=['DELETE'])
 def delete_event_route(event_id):
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    
+    if not user_id: raise APIError("User ID is required as query parameter.", 400)
+
+    if not get_event_by_id(user_id, event_id): # Check existence and ownership
+        raise APIError("Event not found or access denied.", 404)
+
     if delete_event_from_db(event_id, user_id):
         return jsonify({"message": "Event deleted successfully"})
     else:
-        return jsonify({"error": "Event not found."}), 404
+        raise APIError("Event deletion failed.", 500)
+
 
 @app.route('/courses', methods=['GET'])
 def get_courses_route():
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
+    if not user_id: raise APIError("User ID is required.", 400)
     courses = get_all_courses_for_user(user_id)
-    return jsonify({"courses": courses})
+    return jsonify(courses)
 
 @app.route('/courses', methods=['POST'])
 def add_course_route():
     data = request.get_json()
+    if not data: raise APIError("Request body must be JSON.", 400)
+
     user_id = data.get('user_id')
     name = data.get('name')
-    if not user_id or not name:
-        raise APIError("User ID and course name are required.", 400)
-    
+
+    if not user_id: raise APIError("User ID is required.", 400)
+    if not name: raise APIError("Course name is required.", 400)
+
+    # Date validation is handled by add_course_to_db
     course = add_course_to_db(
-        user_id=user_id,
-        name=name,
-        description=data.get('description'),
-        instructor=data.get('instructor'),
-        schedule=data.get('schedule'),
-        start_date=data.get('start_date'),
-        end_date=data.get('end_date')
+        user_id=user_id, name=name, description=data.get('description'),
+        instructor=data.get('instructor'), schedule=data.get('schedule'),
+        start_date=data.get('start_date'), end_date=data.get('end_date')
     )
     return jsonify({"message": "Course added successfully", "course": course}), 201
+
+@app.route('/courses/<course_id>', methods=['GET'])
+def get_course_route(course_id):
+    user_id = request.args.get('user_id')
+    if not user_id: raise APIError("User ID is required.", 400)
+    course = get_course_by_id(user_id, course_id)
+    if course: return jsonify(course)
+    else: raise APIError("Course not found.", 404)
 
 @app.route('/courses/<course_id>', methods=['PUT'])
 def update_course_route(course_id):
     data = request.get_json()
+    if not data: raise APIError("Request body must be JSON.", 400)
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    
-    if update_course_in_db(course_id, user_id, data):
-        return jsonify({"message": "Course updated successfully"})
+    if not user_id: raise APIError("User ID is required as query parameter.", 400)
+
+    if not get_course_by_id(user_id, course_id): # Check existence and ownership
+        raise APIError("Course not found or access denied.", 404)
+
+    # Date validation handled by update_course_in_db
+    rows_affected = update_course_in_db(course_id, user_id, data)
+    updated_course = get_course_by_id(user_id, course_id)
+    if not updated_course: raise APIError("Course not found after update attempt.", 404)
+
+    if rows_affected > 0:
+        return jsonify({"message": "Course updated successfully", "course": updated_course})
     else:
-        return jsonify({"error": "Course not found or no changes made."}), 404
+        return jsonify({"message": "Course update processed, but no changes made or already in desired state.", "course": updated_course}), 200
 
 @app.route('/courses/<course_id>', methods=['DELETE'])
 def delete_course_route(course_id):
     user_id = request.args.get('user_id')
-    if not user_id:
-        raise APIError("User ID is required.", 400)
-    
+    if not user_id: raise APIError("User ID is required as query parameter.", 400)
+
+    if not get_course_by_id(user_id, course_id): # Check existence and ownership
+        raise APIError("Course not found or access denied.", 404)
+
     if delete_course_from_db(course_id, user_id):
         return jsonify({"message": "Course deleted successfully"})
     else:
-        return jsonify({"error": "Course not found."}), 404
+        raise APIError("Course deletion failed.", 500) # Changed from 404 to 500
+
 
 # --- General Error Handlers ---
 @app.errorhandler(APIError)
@@ -1066,14 +1220,10 @@ def not_found(error):
     return jsonify({"error": "Not Found"}), 404
 
 @app.errorhandler(500)
-def internal_server_error(error):
-    # Log the full traceback for debugging server-side issues
+def internal_server_error(error): # Parameter name 'error' is conventional
     app.logger.error(f"Internal Server Error: {error}", exc_info=True)
-    return jsonify({"error": "Internal Server Error"}), 500
-
+    return jsonify({"error": "An internal server error occurred."}), 500
 
 if __name__ == '__main__':
-    # When running directly, ensure database is set up
-    with app.app_context():
-        setup_database() # This will create or update tables on start
-    app.run(debug=True, port=5000) # debug=True will restart server on code changes and show more info
+    init_db() # Ensure DB is initialized
+    app.run(debug=True, host='0.0.0.0', port=int(os.environ.get("PORT", 5000)))

@@ -236,5 +236,159 @@
     </div>
 
     <script src="renderer.js"></script>
+
+    <!-- Edit Task Modal -->
+    <div id="edit-task-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Task</h3>
+                <button class="modal-close-button" id="edit-task-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-task-id">
+                <div class="form-group">
+                    <label for="edit-task-title">Task Title <span class="required">*</span></label>
+                    <input type="text" id="edit-task-title" placeholder="e.g., Finish project report">
+                </div>
+                <div class="form-group">
+                    <label for="edit-task-description">Description</label>
+                    <textarea id="edit-task-description" rows="3" placeholder="Detailed description of the task..."></textarea>
+                </div>
+                <div class="form-group-inline">
+                    <div class="form-group">
+                        <label for="edit-task-due-date">Due Date</label>
+                        <input type="date" id="edit-task-due-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-task-due-time">Due Time</label>
+                        <input type="time" id="edit-task-due-time">
+                    </div>
+                </div>
+                <div class="form-group-inline">
+                    <div class="form-group">
+                        <label for="edit-task-priority">Priority</label>
+                        <select id="edit-task-priority">
+                            <option value="low">Low</option>
+                            <option value="medium">Medium</option>
+                            <option value="high">High</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-task-status">Status</label>
+                        <select id="edit-task-status">
+                            <option value="pending">Pending</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="completed">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="edit-task-save-button" class="button-primary">Save Changes</button>
+                <button id="edit-task-cancel-button" class="button-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Event Modal -->
+    <div id="edit-event-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Event</h3>
+                <button class="modal-close-button" id="edit-event-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-event-id">
+                <div class="form-group">
+                    <label for="edit-event-title">Event Title <span class="required">*</span></label>
+                    <input type="text" id="edit-event-title" placeholder="e.g., Team Meeting">
+                </div>
+                <div class="form-group">
+                    <label for="edit-event-description">Description</label>
+                    <textarea id="edit-event-description" rows="3" placeholder="Brief description of the event..."></textarea>
+                </div>
+                <div class="form-group-inline">
+                    <div class="form-group">
+                        <label for="edit-event-start-date">Start Date <span class="required">*</span></label>
+                        <input type="date" id="edit-event-start-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-event-start-time">Start Time <span class="required">*</span></label>
+                        <input type="time" id="edit-event-start-time">
+                    </div>
+                </div>
+                <div class="form-group-inline">
+                    <div class="form-group">
+                        <label for="edit-event-end-date">End Date</label>
+                        <input type="date" id="edit-event-end-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-event-end-time">End Time</label>
+                        <input type="time" id="edit-event-end-time">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-event-location">Location</label>
+                    <input type="text" id="edit-event-location" placeholder="e.g., Conference Room A">
+                </div>
+                <div class="form-group">
+                    <label for="edit-event-attendees">Attendees (comma-separated emails)</label>
+                    <input type="text" id="edit-event-attendees" placeholder="e.g., email1@example.com, email2@example.com">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="edit-event-save-button" class="button-primary">Save Changes</button>
+                <button id="edit-event-cancel-button" class="button-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Course Modal -->
+    <div id="edit-course-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Course</h3>
+                <button class="modal-close-button" id="edit-course-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-course-id">
+                <div class="form-group">
+                    <label for="edit-course-name">Course Name <span class="required">*</span></label>
+                    <input type="text" id="edit-course-name" placeholder="e.g., Data Structures and Algorithms">
+                </div>
+                <div class="form-group">
+                    <label for="edit-course-description">Description</label>
+                    <textarea id="edit-course-description" rows="3" placeholder="Brief description of the course..."></textarea>
+                </div>
+                <div class="form-group-inline">
+                    <div class="form-group">
+                        <label for="edit-course-instructor">Instructor</label>
+                        <input type="text" id="edit-course-instructor" placeholder="e.g., Prof. Jane Doe">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-course-schedule">Schedule</label>
+                        <input type="text" id="edit-course-schedule" placeholder="e.g., Mon,Wed,Fri 09:00-10:00">
+                    </div>
+                </div>
+                <div class="form-group-inline">
+                    <div class="form-group">
+                        <label for="edit-course-start-date">Start Date</label>
+                        <input type="date" id="edit-course-start-date">
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-course-end-date">End Date</label>
+                        <input type="date" id="edit-course-end-date">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="edit-course-save-button" class="button-primary">Save Changes</button>
+                <button id="edit-course-cancel-button" class="button-secondary">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
 </body>
 </html>
