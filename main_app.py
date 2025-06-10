@@ -10,85 +10,55 @@ import kairo_ai
 import os
 import datetime
 import json
-import logging # Added
-from pathlib import Path # Added
+import logging
+from pathlib import Path
 
 # --- App Name and Logging Configuration ---
 APP_NAME = "KairoApp"
 try:
-    if os.name == 'win32':
-        log_dir_base = Path(os.getenv('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
-    elif os.name == 'darwin':
-        log_dir_base = Path.home() / 'Library' / 'Logs'
-    else: # Linux and other Unix-like
-        log_dir_base = Path(os.getenv('XDG_STATE_HOME', Path.home() / '.local' / 'state'))
-
-    LOG_DIR = log_dir_base / APP_NAME / "logs"
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    if os.name == 'win32': log_dir_base = Path(os.getenv('LOCALAPPDATA', Path.home() / 'AppData' / 'Local'))
+    elif os.name == 'darwin': log_dir_base = Path.home() / 'Library' / 'Logs'
+    else: log_dir_base = Path(os.getenv('XDG_STATE_HOME', Path.home() / '.local' / 'state'))
+    LOG_DIR = log_dir_base / APP_NAME / "logs"; LOG_DIR.mkdir(parents=True, exist_ok=True)
     LOG_FILE_PATH = LOG_DIR / 'kairo_app.log'
-except Exception as e_log_setup: # Fallback for log directory if needed
-    LOG_DIR = Path.home() / f".{APP_NAME.lower()}_logs"
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+except Exception as e_log_setup:
+    LOG_DIR = Path.home() / f".{APP_NAME.lower()}_logs"; LOG_DIR.mkdir(parents=True, exist_ok=True)
     LOG_FILE_PATH = LOG_DIR / 'kairo_app.log'
     print(f"Error setting up standard log directory: {e_log_setup}. Using fallback: {LOG_FILE_PATH}")
-
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s',
-    filename=LOG_FILE_PATH,
-    filemode='a' # Append to the log file
-)
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s', filename=LOG_FILE_PATH, filemode='a')
 logging.info("KairoApp started")
 # --- End Logging Configuration ---
-
 try:
-    from tkcalendar import DateEntry
-    TKCALENDAR_AVAILABLE = True
-    logging.info("tkcalendar imported successfully.")
+    from tkcalendar import DateEntry; TKCALENDAR_AVAILABLE = True; logging.info("tkcalendar imported successfully.")
 except ImportError:
-    TKCALENDAR_AVAILABLE = False
-    logging.warning("tkcalendar not found, falling back to ttk.Entry for dates. Consider `pip install tkcalendar`.")
-    print("tkcalendar not found, falling back to ttk.Entry for dates. Consider `pip install tkcalendar`.")
-
+    TKCALENDAR_AVAILABLE = False; logging.warning("tkcalendar not found, falling back to ttk.Entry for dates."); print("tkcalendar not found, falling back to ttk.Entry for dates.")
 
 # --- UI Constants ---
-BASE_PADDING = {'padx': 8, 'pady': 4}; INPUT_PADDING = {'padx': 5, 'pady': 5}; FRAME_PADDING = {'padx': 10, 'pady': 5}
-LABELFRAME_PADDING = (10, 5); APP_FONT_FAMILY = "Arial"; APP_FONT_SIZE = 10; APP_FONT = (APP_FONT_FAMILY, APP_FONT_SIZE)
-TITLE_FONT_SIZE = 12; TITLE_FONT = (APP_FONT_FAMILY, TITLE_FONT_SIZE, "bold"); TEXT_FONT = (APP_FONT_FAMILY, APP_FONT_SIZE)
-ENTRY_FONT = (APP_FONT_FAMILY, APP_FONT_SIZE); BG_COLOR = "#FAFAFA"; TEXT_COLOR = "#212121"; BORDER_COLOR = "#E0E0E0"
-HIGHLIGHT_THICKNESS = 0; BORDER_WIDTH = 0
+BASE_PADDING={'padx':8,'pady':4};INPUT_PADDING={'padx':5,'pady':5};FRAME_PADDING={'padx':10,'pady':5};LABELFRAME_PADDING=(10,5)
+APP_FONT_FAMILY="Arial";APP_FONT_SIZE=10;APP_FONT=(APP_FONT_FAMILY,APP_FONT_SIZE);TITLE_FONT_SIZE=12;TITLE_FONT=(APP_FONT_FAMILY,TITLE_FONT_SIZE,"bold")
+TEXT_FONT=(APP_FONT_FAMILY,APP_FONT_SIZE);ENTRY_FONT=(APP_FONT_FAMILY,APP_FONT_SIZE);BG_COLOR="#FAFAFA";TEXT_COLOR="#212121"
+BORDER_COLOR="#E0E0E0";HIGHLIGHT_THICKNESS=0;BORDER_WIDTH=0
 
 class BaseView(ttk.Frame):
     def __init__(self, parent, user_id, app=None, *args, **kwargs):
-        super().__init__(parent, *args, **kwargs)
-        self.user_id = user_id
-        self.app = app
-        self.logger = logging.getLogger(self.__class__.__name__) # Logger for each view
+        super().__init__(parent, *args, **kwargs); self.user_id=user_id; self.app=app; self.logger=logging.getLogger(self.__class__.__name__)
 
-class DashboardView(BaseView):
+class DashboardView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
-        super().__init__(parent, user_id, app=app)
-        top_frame = ttk.Frame(self); top_frame.pack(fill=tk.X, padx=FRAME_PADDING['padx'], pady=(FRAME_PADDING['pady'],0))
-        self.refresh_button = ttk.Button(top_frame, text="Refresh Dashboard", command=self.load_dashboard_data)
-        self.refresh_button.pack(side=tk.LEFT, **BASE_PADDING)
-        self.summary_text = Text(self, wrap=tk.WORD, state=tk.DISABLED, height=20, font=TEXT_FONT, relief=tk.FLAT, highlightthickness=HIGHLIGHT_THICKNESS, borderwidth=BORDER_WIDTH, padx=5, pady=5, bg=BG_COLOR, fg=TEXT_COLOR)
-        self.summary_text.pack(fill=tk.BOTH, expand=True, **FRAME_PADDING)
-        self.load_dashboard_data()
+        super().__init__(parent, user_id, app=app); top_frame=ttk.Frame(self); top_frame.pack(fill=tk.X,padx=FRAME_PADDING['padx'],pady=(FRAME_PADDING['pady'],0))
+        self.refresh_button=ttk.Button(top_frame,text="Refresh Dashboard",command=self.load_dashboard_data); self.refresh_button.pack(side=tk.LEFT,**BASE_PADDING)
+        self.summary_text=Text(self,wrap=tk.WORD,state=tk.DISABLED,height=20,font=TEXT_FONT,relief=tk.FLAT,highlightthickness=HIGHLIGHT_THICKNESS,borderwidth=BORDER_WIDTH,padx=5,pady=5,bg=BG_COLOR,fg=TEXT_COLOR)
+        self.summary_text.pack(fill=tk.BOTH,expand=True,**FRAME_PADDING); self.load_dashboard_data()
     def load_dashboard_data(self):
-        self.summary_text.config(state=tk.NORMAL); self.summary_text.delete("1.0", tk.END)
-        try:
-            summary = ReportService.generate_daily_summary(self.user_id)
-            self.summary_text.insert(tk.END, summary)
-        except Exception as e:
-            error_msg = f"Error loading dashboard summary: {str(e)}"
-            self.summary_text.insert(tk.END, error_msg)
-            self.logger.error(f"UI Error in DashboardView.load_dashboard_data: {str(e)}", exc_info=True)
-            messagebox.showerror("Operation Failed", f"Failed to load dashboard: {str(e)}", parent=self)
+        self.summary_text.config(state=tk.NORMAL);self.summary_text.delete("1.0",tk.END)
+        try: self.summary_text.insert(tk.END,ReportService.generate_daily_summary(self.user_id))
+        except Exception as e: error_msg=f"Error loading dashboard: {str(e)}";self.summary_text.insert(tk.END,error_msg);self.logger.error(f"UI Error in DashboardView.load_dashboard_data: {str(e)}",exc_info=True);messagebox.showerror("Operation Failed",f"Failed to load dashboard: {str(e)}",parent=self)
         finally: self.summary_text.config(state=tk.DISABLED)
 
 class TaskView(BaseView):
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
+        self.tasks_map = {} # For storing full task dicts by task_id
         new_task_frame = ttk.LabelFrame(self, text="New Task", padding=LABELFRAME_PADDING); new_task_frame.pack(fill="x", **FRAME_PADDING)
         self.entries = {}
         ttk.Label(new_task_frame, text="Title:").grid(row=0, column=0, sticky="w", **INPUT_PADDING)
@@ -109,9 +79,10 @@ class TaskView(BaseView):
         priority_menu = ttk.OptionMenu(new_task_frame, self.entries["priority_var"], priority_options[1], *priority_options); priority_menu.grid(row=3, column=1, columnspan=3, sticky="ew", **INPUT_PADDING)
         new_task_frame.grid_columnconfigure(1, weight=1)
         ttk.Button(new_task_frame, text="Add Task", command=self.add_task).grid(row=4, column=0, columnspan=4, pady=BASE_PADDING['pady']*2)
+
         tasks_frame = ttk.LabelFrame(self, text="Tasks", padding=LABELFRAME_PADDING); tasks_frame.pack(fill="both", expand=True, **FRAME_PADDING)
         columns = ("id", "title", "due_date", "priority", "status", "scheduled_start", "scheduled_end")
-        self.tree = ttk.Treeview(tasks_frame, columns=columns, show="headings")
+        self.tree = ttk.Treeview(tasks_frame, columns=columns, show="headings", selectmode='extended') # selectmode extended
         for col in columns: self.tree.heading(col, text=col.replace("_"," ").title()); self.tree.column(col, width=50 if col=="id" else (180 if col=="title" else (110 if "schedule" in col or "date" in col else 80)), stretch=(col!="id"))
         self.tree.pack(fill="both", expand=True, side="left", **BASE_PADDING)
         scrollbar = ttk.Scrollbar(tasks_frame, orient="vertical", command=self.tree.yview); self.tree.configure(yscrollcommand=scrollbar.set); scrollbar.pack(side="right", fill="y")
@@ -119,13 +90,28 @@ class TaskView(BaseView):
         ttk.Button(buttons_frame, text="Refresh Tasks", command=self.load_tasks).pack(side="left", **BASE_PADDING)
         ttk.Button(buttons_frame, text="Mark Complete", command=self.complete_task).pack(side="left", **BASE_PADDING)
         ttk.Button(buttons_frame, text="Smart Schedule Tasks", command=self.open_scheduler_dialog).pack(side="left", **BASE_PADDING)
+
     def _format_dt_display(self,s): return datetime.datetime.fromisoformat(s).strftime("%Y-%m-%d %H:%M") if s and isinstance(s,str) else "N/A"
     def load_tasks(self):
         for i in self.tree.get_children(): self.tree.delete(i)
+        self.tasks_map.clear() # Clear existing map
         try:
-            for task in TaskService.get_all_tasks(self.user_id): self.tree.insert("","end",values=(task.get('task_id','N/A')[:8], task.get('title','N/A'), self._format_dt_display(task.get('due_datetime')), task.get('priority','N/A'), task.get('status','N/A'), self._format_dt_display(task.get('scheduled_start')), self._format_dt_display(task.get('scheduled_end'))))
+            tasks_from_service = TaskService.get_all_tasks(self.user_id)
+            if tasks_from_service:
+                for task_dict in tasks_from_service:
+                    self.tasks_map[task_dict['task_id']] = task_dict # Populate map
+                    display_values = (
+                        task_dict.get('task_id','N/A')[:8], task_dict.get('title','N/A'),
+                        self._format_dt_display(task_dict.get('due_datetime')),
+                        task_dict.get('priority','N/A'), task_dict.get('status','N/A'),
+                        self._format_dt_display(task_dict.get('scheduled_start')),
+                        self._format_dt_display(task_dict.get('scheduled_end'))
+                    )
+                    self.tree.insert("","end", iid=task_dict['task_id'], values=display_values) # Use task_id as iid
+            else: self.tree.insert("", "end", values=("", "No tasks found.", "", "", "", "", ""))
         except Exception as e: self.logger.error(f"UI Error in TaskView.load_tasks: {str(e)}", exc_info=True); messagebox.showerror("Error Loading Tasks",f"Failed to load tasks: {e}", parent=self)
-    def add_task(self):
+
+    def add_task(self): # Logic for add_task remains largely the same
         try:
             title = self.entries["title"].get(); description = self.entries["description"].get(); priority = self.entries["priority_var"].get(); due_datetime_iso = None
             if TKCALENDAR_AVAILABLE:
@@ -150,20 +136,29 @@ class TaskView(BaseView):
             self.entries["title"].delete(0,tk.END); self.entries["description"].delete(0,tk.END)
             if TKCALENDAR_AVAILABLE: self.entries["due_time"].delete(0,tk.END); self.entries["due_time"].insert(0, (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%H:%M"))
         except Exception as e: self.logger.error(f"UI Error in TaskView.add_task: {str(e)}", exc_info=True); messagebox.showerror("Error Adding Task",f"Failed: {e}", parent=self)
+
     def complete_task(self):
         try:
-            sel = self.tree.selection();
-            if not sel: messagebox.showerror("Error","No task selected.", parent=self); return
-            disp_id, title = self.tree.item(sel,"values")[0], self.tree.item(sel,"values")[1]; full_id=None
-            tasks_list = TaskService.get_all_tasks(self.user_id)
-            if tasks_list is None: messagebox.showerror("Error", "Could not fetch tasks to verify completion.", parent=self); return
-            for t in tasks_list:
-                if t.get('title')==title and t.get('task_id','').startswith(disp_id): full_id=t.get('task_id'); break
-            if not full_id: messagebox.showerror("Error","Could not find full task ID.", parent=self); return
-            completed = TaskService.complete_task(full_id,self.user_id)
-            if completed: messagebox.showinfo("Success","Task complete.", parent=self); self.load_tasks()
-            else: messagebox.showerror("Error Completing Task", "Failed to complete task (service returned None).", parent=self)
+            selected_iids = self.tree.selection() # Can be multiple if selectmode='extended'
+            if not selected_iids: messagebox.showerror("Error","No task selected.", parent=self); return
+
+            completed_count = 0
+            for item_iid in selected_iids: # Iterate through all selected items
+                # full_task_id is now the item_iid itself
+                full_task_id = item_iid
+                if not full_task_id or full_task_id not in self.tasks_map:
+                     self.logger.warning(f"TaskView.complete_task: Invalid task_id {full_task_id} from selection, or not in tasks_map.")
+                     continue # Skip if ID is somehow invalid
+
+                completed = TaskService.complete_task(full_task_id,self.user_id)
+                if completed: completed_count += 1
+                else: self.logger.warning(f"TaskView.complete_task: Failed to complete task {full_task_id} via service.")
+
+            if completed_count > 0: messagebox.showinfo("Success",f"{completed_count} task(s) marked as complete.", parent=self)
+            if completed_count < len(selected_iids): messagebox.showwarning("Partial Success", f"{len(selected_iids) - completed_count} task(s) could not be completed.", parent=self)
+            self.load_tasks()
         except Exception as e: self.logger.error(f"UI Error in TaskView.complete_task: {str(e)}", exc_info=True); messagebox.showerror("Error Completing Task",f"Failed: {e}", parent=self)
+
     def open_scheduler_dialog(self):
         try:
             self.scheduler_dialog = tk.Toplevel(self.master); self.scheduler_dialog.title("Smart Scheduler"); self.scheduler_dialog.geometry("350x150"); self.scheduler_dialog.transient(self.master); self.scheduler_dialog.grab_set()
@@ -171,23 +166,46 @@ class TaskView(BaseView):
             ttk.Label(dialog_frame, text="Select Scheduling Strategy:").pack(pady=BASE_PADDING['pady']*2)
             self.schedule_strategy_var = tk.StringVar(value="priority_based"); strategies = ["priority_based", "time_optimized", "balanced"]
             strategy_combo = ttk.Combobox(dialog_frame, textvariable=self.schedule_strategy_var, values=strategies, state="readonly"); strategy_combo.pack(pady=BASE_PADDING['pady']); strategy_combo.set("priority_based")
-            ttk.Button(dialog_frame, text="Schedule All Pending Tasks", command=self.execute_scheduling).pack(pady=BASE_PADDING['pady']*2)
+            # Changed button text below
+            ttk.Button(dialog_frame, text="Schedule Selected Tasks", command=self.execute_scheduling).pack(pady=BASE_PADDING['pady']*2)
         except Exception as e: self.logger.error(f"UI Error in TaskView.open_scheduler_dialog: {str(e)}", exc_info=True); messagebox.showerror("Error", f"Could not open scheduler: {e}", parent=self)
+
     def execute_scheduling(self):
         try:
-            strategy = self.schedule_strategy_var.get();
+            strategy = self.schedule_strategy_var.get()
             if not strategy: messagebox.showerror("Error", "Please select a strategy.", parent=self.scheduler_dialog); return
-            all_tasks = TaskService.get_all_tasks(self.user_id)
-            if all_tasks is None: messagebox.showerror("Error", "Could not fetch tasks for scheduling.", parent=self.scheduler_dialog); return
-            pending_tasks = [task for task in all_tasks if task.get('status', '').lower() in ['pending', 'scheduled']]
-            if not pending_tasks: messagebox.showinfo("No Tasks", "No pending tasks to schedule.", parent=self.scheduler_dialog); self.scheduler_dialog.destroy(); return
-            scheduler = SchedulingService(self.user_id); scheduled_info = scheduler.schedule_multiple_tasks(pending_tasks, strategy)
-            if scheduled_info is not None: messagebox.showinfo("Success", f"{len(scheduled_info) if scheduled_info else 0} tasks scheduled/rescheduled.", parent=self.scheduler_dialog)
-            else: messagebox.showwarning("Scheduling", "Scheduling service failed or no tasks were scheduled.", parent=self.scheduler_dialog)
-            self.load_tasks(); self.scheduler_dialog.destroy()
-        except Exception as e: self.logger.error(f"UI Error in TaskView.execute_scheduling: {str(e)}", exc_info=True); messagebox.showerror("Scheduling Error", f"Failed to schedule tasks: {e}", parent=self.scheduler_dialog)
 
-class EventView(BaseView):
+            selected_task_ids = self.tree.selection() # These are actual task_ids
+            if not selected_task_ids:
+                messagebox.showinfo("No Tasks Selected", "Please select one or more tasks from the list to schedule.", parent=self.scheduler_dialog)
+                return
+
+            selected_tasks_list = [self.tasks_map[tid] for tid in selected_task_ids if tid in self.tasks_map]
+
+            if not selected_tasks_list:
+                messagebox.showwarning("Tasks Not Found", "Could not retrieve details for selected tasks. Please refresh and try again.", parent=self.scheduler_dialog)
+                return
+
+            # Optionally, filter further e.g. only 'pending' or 'scheduled' tasks for rescheduling
+            # tasks_to_schedule = [task for task in selected_tasks_list if task.get('status', '').lower() in ['pending', 'scheduled']]
+            # if not tasks_to_schedule:
+            #     messagebox.showinfo("No Schedulable Tasks", "Selected tasks are not in a schedulable state (e.g., already completed).", parent=self.scheduler_dialog)
+            #     self.scheduler_dialog.destroy(); return
+
+            scheduler = SchedulingService(self.user_id)
+            # Pass selected_tasks_list (or tasks_to_schedule if filtered)
+            scheduled_info = scheduler.schedule_multiple_tasks(selected_tasks_list, strategy)
+
+            if scheduled_info is not None: messagebox.showinfo("Success", f"{len(scheduled_info) if scheduled_info else 0} selected tasks have been scheduled/rescheduled.", parent=self.scheduler_dialog)
+            else: messagebox.showwarning("Scheduling", "Scheduling service failed or no tasks were scheduled.", parent=self.scheduler_dialog)
+
+            self.load_tasks()
+            if hasattr(self, 'scheduler_dialog') and self.scheduler_dialog.winfo_exists():
+                 self.scheduler_dialog.destroy()
+        except Exception as e: self.logger.error(f"UI Error in TaskView.execute_scheduling: {str(e)}", exc_info=True); messagebox.showerror("Scheduling Error", f"Failed to schedule tasks: {e}", parent=self.scheduler_dialog if hasattr(self, 'scheduler_dialog') else self)
+
+
+class EventView(BaseView): # Minimal changes, ensure consistency
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
         new_event_frame = ttk.LabelFrame(self, text="New Event", padding=LABELFRAME_PADDING); new_event_frame.pack(fill="x", **FRAME_PADDING)
@@ -237,7 +255,7 @@ class EventView(BaseView):
         except ValueError as ve: self.logger.warning(f"Data validation error in EventView.add_event: {str(ve)}"); messagebox.showerror("Error","Invalid Time format. Use HH:MM.", parent=self)
         except Exception as ex: self.logger.error(f"UI Error in EventView.add_event: {str(ex)}", exc_info=True); messagebox.showerror("Error Adding Event",f"Failed: {ex}", parent=self)
 
-class ChatView(BaseView):
+class ChatView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
         self.history_text=Text(self,wrap=tk.WORD,state=tk.DISABLED,height=20,font=TEXT_FONT, relief=tk.FLAT, highlightthickness=HIGHLIGHT_THICKNESS, borderwidth=BORDER_WIDTH, padx=5,pady=5, bg=BG_COLOR, fg=TEXT_COLOR);
@@ -284,7 +302,7 @@ class ChatView(BaseView):
         except Exception as e: err_msg=f"Error AI response: {e}"; self.add_msg("System",err_msg); kairo_ai.log_conversation_message(self.user_id,"system_error",err_msg); self.logger.error(f"UI Error in ChatView.send_message (AI part): {str(e)}", exc_info=True)
         finally: self.input_entry.config(state=tk.NORMAL); self.send_button.config(state=tk.NORMAL); self.input_entry.focus_set()
 
-class SettingsView(BaseView):
+class SettingsView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app); self.vars = {}
         frame = ttk.LabelFrame(self, text="User Preferences", padding=LABELFRAME_PADDING); frame.pack(fill=tk.BOTH, expand=True, **FRAME_PADDING)
@@ -324,7 +342,7 @@ class SettingsView(BaseView):
         except Exception as e: self.logger.error(f"UI Error in SettingsView.save_settings: {str(e)}", exc_info=True); messagebox.showerror("Error Saving Settings", f"Unexpected error: {e}", parent=self)
         self.load_settings()
 
-class LearningView(BaseView):
+class LearningView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
         self.learning_service = LearningService()
@@ -409,23 +427,16 @@ class KairoApp:
         if self.notebook.tabs() and "Dashboard" in self.views: self.notebook.select(self.views["Dashboard"])
         if "Tasks" in self.views: self.views["Tasks"].load_tasks()
         if "Events" in self.views: self.views["Events"].load_events()
-    def on_closing(self): # Renamed from global on_closing
+    def on_closing(self):
         logging.info("KairoApp closing")
         database.close_db_connection()
         self.root.destroy()
 
 if __name__ == "__main__":
-    # Ensure CWD is script's directory for relative paths (like DB if not using user_data_dir)
-    # This is less critical now with user_data_dir for DB, but good practice.
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # The database.py now handles its own path, so chdir might not be strictly needed for DB
-    # but other relative paths might exist. For now, it's fine.
-    # os.chdir(script_dir)
-    # print(f"CWD: {os.getcwd()}") # For debugging CWD if needed
-
-    logging.info(f"KairoApp __main__ started. CWD: {os.getcwd()}. DB Path: {database.DATABASE_PATH}")
+    logging.info(f"KairoApp __main__ started. CWD: {os.getcwd()}. DB Path: {database.DATABASE_PATH}") # CWD might not be script_dir if not chdir'd
     root = tk.Tk();
     app = KairoApp(root)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing) # Use bound method
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
     logging.info("KairoApp exited mainloop.")

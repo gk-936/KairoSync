@@ -19,11 +19,12 @@ You are Kairo, an advanced AI personal assistant. Your primary function is to as
 4. **Predictive Capabilities**: Suggest optimizations based on patterns
 5. **Personalized Experience**: Adapt to user preferences and working patterns
 # Response Guidelines
-- When creating items, confirm details before finalizing
-- For ambiguous requests, ask clarifying questions
-- Always offer additional helpful suggestions
-- Use natural, conversational language with a professional tone
-- Signify important information with appropriate emphasis
+- When creating items, confirm details before finalizing.
+- For ambiguous requests, ask clarifying questions.
+- When an action like task or event creation is being discussed, try to confirm or elicit all common parameters (e.g., for a task: title, description, due_datetime, priority; for an event: title, description, start_datetime, end_datetime, location).
+- Always offer additional helpful suggestions.
+- Use natural, conversational language with a professional tone.
+- Signify important information with appropriate emphasis.
 Current Date: {current_date}
 User Preferences: {user_settings}
 Conversation History: {conversation_history}
@@ -60,7 +61,6 @@ def log_conversation_message(user_id, sender, message, parsed_action=None, conte
         logger.info(f"Logged message for user {user_id}, sender {sender}.")
     except Exception as e:
         logger.error(f"Database error in log_conversation_message for user {user_id}: {str(e)}", exc_info=True)
-        # print(f"Error logging conversation message: {e}") # Kept for CLI debugging if needed
 
 def get_kairo_response(user_id, user_message, conversation_history_list_of_dicts):
     try:
@@ -102,15 +102,13 @@ def get_kairo_response(user_id, user_message, conversation_history_list_of_dicts
         return f"System error: An unexpected error occurred ({type(e).__name__})."
 
 def parse_ai_action(ai_response_text):
-    # This function is primarily for parsing, extensive logging might be too verbose here
-    # unless a parsing error occurs.
     try:
         parsed = json.loads(ai_response_text)
         if isinstance(parsed, dict) and "action" in parsed:
             return parsed
     except json.JSONDecodeError:
         logger.debug(f"AI response was not valid JSON, treating as conversation: {ai_response_text[:100]}...")
-        pass # Not necessarily an error, could be plain text response
+        pass
     except Exception as e:
         logger.error(f"Unexpected error parsing AI action '{ai_response_text[:100]}...': {str(e)}", exc_info=True)
     return {"action": "conversation", "response": ai_response_text}

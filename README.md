@@ -6,12 +6,12 @@ Kairo is a desktop application designed to be your personal assistant, helping y
 
 *   **Dashboard**: Get a quick overview of your day, including upcoming events and pending tasks.
 *   **Task Management**: Create, view, and complete tasks. Uses a calendar widget for easy date input.
-*   **Smart Scheduling**: Automatically schedule pending tasks based on selected strategies (e.g., priority-based).
+*   **Smart Scheduling**: Select one or more tasks from your list, then choose a strategy (e.g., priority-based) to have Kairo schedule them for you.
 *   **Event Scheduling**: Add and view your events. Uses a calendar widget for date input.
 *   **Learning Center**:
     *   Create structured learning sessions (events and notes) for specific topics.
     *   Generate personalized learning content based on topics and (simplified) learning styles.
-*   **AI Chat**: Interact with Kairo AI for help, information, or to trigger actions. Kairo can directly create tasks and events based on your conversation. Conversation history is saved.
+*   **AI Chat**: Interact with Kairo AI for help, information, or to trigger actions. Kairo can directly create tasks and events based on your conversation, and will prompt for missing details if necessary. Conversation history is saved.
 *   **User Settings**: Customize application preferences like theme, Kairo's personality, working hours, and task archival settings.
 *   **Local Data Storage**: All your data is stored locally in an SQLite database (`kairo_data.db`) in a user-specific application data directory.
 *   **Logging**: Application events and errors are logged for troubleshooting.
@@ -72,11 +72,12 @@ The application features a tabbed interface:
 *   **Dashboard**: Shows your daily summary. Click "Refresh Dashboard" to update.
 *   **Kairo AI Chat**: Type your message in the input field and press Enter or click "Send". Conversation history is loaded and saved.
     *   Try commands like: "Kairo, create a task to buy milk tomorrow" or "Kairo, schedule an event: Dentist appointment next Tuesday at 3 PM for 1 hour."
+    *   If you ask Kairo to perform an action (like creating a task or event) and essential details are missing, Kairo will now prompt you for the specific information needed.
 *   **Tasks**:
     *   View existing tasks, including their scheduled times.
     *   Add new tasks using the form (date input uses a calendar).
+    *   Select one or more tasks from the list, then click "Smart Schedule Tasks". A dialog will appear allowing you to choose a scheduling strategy for the selected tasks.
     *   Select a task and click "Mark Complete".
-    *   Click "Smart Schedule Tasks" to open a dialog, choose a strategy (e.g., "priority_based"), and schedule all pending tasks.
     *   Click "Refresh" to reload the task list.
 *   **Events**:
     *   View existing events.
@@ -108,7 +109,7 @@ The application features a tabbed interface:
 
 *   **Packaging**: Tools like PyInstaller can be used. Users may need to ensure their Python installation includes shared libraries for PyInstaller to work correctly, especially on Linux.
 *   **Advanced UI Enhancements**: Explore more sophisticated visual themes or custom widget designs beyond the current minimalistic approach.
-*   **Refine Scheduling**: The "time_optimized" and "balanced" scheduling strategies in `SchedulingService` are currently placeholders and fall back to "priority_based". These need full implementation.
+*   **Advanced Scheduling Logic**: Incorporate task dependencies, more detailed user availability (e.g., from a calendar integration), and refine the "time_optimized" and "balanced" strategies in `SchedulingService`.
 *   **Full Adaptive Learning**: Further develop the `AdaptiveLearner` capabilities and integrate its suggestions more deeply into the UI and scheduling.
-*   **AI Action Parameter Handling**: Improve the AI's ability to provide all necessary parameters for actions like task/event creation, and enhance the application's handling of potentially missing or ambiguous parameters from the AI.
+*   **Conversational Slot Filling for AI Actions**: Enable multi-turn dialogues where Kairo collects missing parameters one by one if needed for more complex actions.
 ```
