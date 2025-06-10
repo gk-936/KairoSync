@@ -11,9 +11,10 @@ Kairo is a desktop application designed to be your personal assistant, helping y
 *   **Learning Center**:
     *   Create structured learning sessions (events and notes) for specific topics.
     *   Generate personalized learning content based on topics and (simplified) learning styles.
-*   **AI Chat**: Interact with Kairo AI for help, information, or to trigger actions. Conversation history is saved.
+*   **AI Chat**: Interact with Kairo AI for help, information, or to trigger actions. Kairo can directly create tasks and events based on your conversation. Conversation history is saved.
 *   **User Settings**: Customize application preferences like theme, Kairo's personality, working hours, and task archival settings.
 *   **Local Data Storage**: All your data is stored locally in an SQLite database (`kairo_data.db`) in a user-specific application data directory.
+*   **Logging**: Application events and errors are logged for troubleshooting.
 
 ## Prerequisites
 
@@ -55,7 +56,14 @@ Kairo is a desktop application designed to be your personal assistant, helping y
     ```
 
 3.  **First Run - Database Initialization**:
-    On the first run, the application will create and initialize an SQLite database file named `kairo_data.db`. This file is stored in a user-specific application data directory (e.g., `~/.local/share/KairoApp` on Linux, `~/Library/Application Support/KairoApp` on macOS, or `%APPDATA%\KairoApp` on Windows).
+    On the first run, the application will create and initialize an SQLite database file named `kairo_data.db`. This file is stored in a user-specific application data directory.
+
+## Logging
+
+The application logs important events, errors, and debug information to `kairo_app.log`. This file is useful for troubleshooting issues. You can find it in a user-specific application data directory:
+*   **Linux**: Typically `~/.local/share/KairoApp/logs/` or (if `XDG_STATE_HOME` is set) `$XDG_STATE_HOME/KairoApp/logs/`. Fallback: `~/.kairoapp_logs/`.
+*   **Windows**: `%LOCALAPPDATA%\KairoApp\logs\` (e.g., `C:\Users\<YourUsername>\AppData\Local\KairoApp\logs`). Fallback: `~\.kairoapp_logs\`.
+*   **macOS**: `~/Library/Logs/KairoApp/`. Fallback: `~/.kairoapp_logs/`.
 
 ## Using the Application
 
@@ -63,6 +71,7 @@ The application features a tabbed interface:
 
 *   **Dashboard**: Shows your daily summary. Click "Refresh Dashboard" to update.
 *   **Kairo AI Chat**: Type your message in the input field and press Enter or click "Send". Conversation history is loaded and saved.
+    *   Try commands like: "Kairo, create a task to buy milk tomorrow" or "Kairo, schedule an event: Dentist appointment next Tuesday at 3 PM for 1 hour."
 *   **Tasks**:
     *   View existing tasks, including their scheduled times.
     *   Add new tasks using the form (date input uses a calendar).
@@ -99,8 +108,7 @@ The application features a tabbed interface:
 
 *   **Packaging**: Tools like PyInstaller can be used. Users may need to ensure their Python installation includes shared libraries for PyInstaller to work correctly, especially on Linux.
 *   **Advanced UI Enhancements**: Explore more sophisticated visual themes or custom widget designs beyond the current minimalistic approach.
-*   **Error Handling and Logging**: Implement more robust error handling throughout the application and consider adding file-based logging.
-*   **AI Action Fulfillment**: Currently, the AI can suggest actions, but the UI doesn't automatically execute them (e.g., if AI suggests creating a task, the user still has to go to the Tasks tab). Future work could link AI-parsed actions to direct function calls within the app.
 *   **Refine Scheduling**: The "time_optimized" and "balanced" scheduling strategies in `SchedulingService` are currently placeholders and fall back to "priority_based". These need full implementation.
 *   **Full Adaptive Learning**: Further develop the `AdaptiveLearner` capabilities and integrate its suggestions more deeply into the UI and scheduling.
+*   **AI Action Parameter Handling**: Improve the AI's ability to provide all necessary parameters for actions like task/event creation, and enhance the application's handling of potentially missing or ambiguous parameters from the AI.
 ```
