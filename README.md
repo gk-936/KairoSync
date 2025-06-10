@@ -5,8 +5,8 @@ Kairo is a desktop application designed to be your personal assistant, helping y
 ## Features
 
 *   **Dashboard**: Get a quick overview of your day, including upcoming events and pending tasks.
-*   **Task Management**: Create, view, complete, and define dependencies between tasks. Tasks can be scheduled using smart algorithms based on priority or other strategies. Uses a calendar widget for easy date input.
-*   **Smart Scheduling**: Select one or more tasks from your list, then choose a strategy (e.g., priority-based) to have Kairo schedule them for you.
+*   **Task Management**: Create, view, complete, and define dependencies between tasks. Uses a calendar widget for easy date input.
+*   **Smart Scheduling**: Select one or more tasks from your list, then choose a strategy (e.g., priority-based) to have Kairo schedule them for you. The scheduling algorithms now respect defined task dependencies, ensuring tasks are scheduled in a valid order.
 *   **Event Scheduling**: Add and view your events. Uses a calendar widget for date input.
 *   **Learning Center**:
     *   Create structured learning sessions (events and notes) for specific topics.
@@ -76,7 +76,7 @@ The application features a tabbed interface:
 *   **Tasks**:
     *   View existing tasks, including their scheduled times and dependencies. The task list now displays a 'Depends On' column showing the title of the parent task if a dependency is set.
     *   Add new tasks using the form. When creating a new task, you can optionally select a parent task from the 'Depends On Task' dropdown. This signifies the new task should ideally be addressed after the parent task is completed.
-    *   Select one or more tasks from the list, then click "Smart Schedule Tasks". A dialog will appear allowing you to choose a scheduling strategy for the selected tasks.
+    *   Select one or more tasks from the list, then click "Smart Schedule Tasks". A dialog will appear allowing you to choose a scheduling strategy for the selected tasks. After the scheduling attempt, a summary will be displayed, indicating how many tasks were successfully scheduled and if any tasks could not be scheduled, along with reasons (e.g., due to dependency conflicts, cycles, or lack of suitable time slots).
     *   Select a task (or multiple) and click "Mark Complete".
     *   Click "Refresh" to reload the task list.
 *   **Events**:
@@ -95,7 +95,7 @@ The application features a tabbed interface:
 *   `main_app.py`: Main entry point for the Tkinter desktop application and UI views.
 *   `database.py`: Handles SQLite database connection, schema, and user-specific data directory setup.
 *   `services.py`: Contains business logic for tasks, events, reports, and learning.
-*   `scheduling_service.py`: Implements task scheduling logic.
+*   `scheduling_service.py`: Implements task scheduling logic, including dependency handling.
 *   `settings_service.py`: Manages loading and saving of application settings.
 *   `user_service.py`: Manages user identification (currently uses a default local user).
 *   `kairo_ai.py`: Manages interaction with the Ollama AI model and chat history.
@@ -109,6 +109,6 @@ The application features a tabbed interface:
 
 *   **Packaging**: Tools like PyInstaller can be used. Users may need to ensure their Python installation includes shared libraries for PyInstaller to work correctly, especially on Linux.
 *   **Advanced UI Enhancements**: Explore more sophisticated visual themes or custom widget designs beyond the current minimalistic approach.
-*   **Advanced Scheduling Logic**: Utilize Task Dependencies in Scheduling: Enhance the `SchedulingService` to understand and respect the defined task dependencies when suggesting a schedule. Further incorporate more detailed user availability and refine 'time_optimized'/'balanced' strategies.
+*   **Advanced Scheduling Logic**: Further refine scheduling strategies (e.g., 'time_optimized', 'balanced') to better incorporate task dependencies. Explore features like resource management or more granular user availability constraints.
 *   **Full Adaptive Learning**: Further develop the `AdaptiveLearner` capabilities and integrate its suggestions more deeply into the UI and scheduling.
 ```
