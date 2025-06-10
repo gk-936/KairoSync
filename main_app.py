@@ -55,10 +55,10 @@ class DashboardView(BaseView): # Unchanged
         except Exception as e: error_msg=f"Error loading dashboard: {str(e)}";self.summary_text.insert(tk.END,error_msg);self.logger.error(f"UI Error in DashboardView.load_dashboard_data: {str(e)}",exc_info=True);messagebox.showerror("Operation Failed",f"Failed to load dashboard: {str(e)}",parent=self)
         finally: self.summary_text.config(state=tk.DISABLED)
 
-class TaskView(BaseView):
+class TaskView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
-        self.tasks_map = {} # For storing full task dicts by task_id
+        self.tasks_map = {}
         new_task_frame = ttk.LabelFrame(self, text="New Task", padding=LABELFRAME_PADDING); new_task_frame.pack(fill="x", **FRAME_PADDING)
         self.entries = {}
         ttk.Label(new_task_frame, text="Title:").grid(row=0, column=0, sticky="w", **INPUT_PADDING)
@@ -79,10 +79,9 @@ class TaskView(BaseView):
         priority_menu = ttk.OptionMenu(new_task_frame, self.entries["priority_var"], priority_options[1], *priority_options); priority_menu.grid(row=3, column=1, columnspan=3, sticky="ew", **INPUT_PADDING)
         new_task_frame.grid_columnconfigure(1, weight=1)
         ttk.Button(new_task_frame, text="Add Task", command=self.add_task).grid(row=4, column=0, columnspan=4, pady=BASE_PADDING['pady']*2)
-
         tasks_frame = ttk.LabelFrame(self, text="Tasks", padding=LABELFRAME_PADDING); tasks_frame.pack(fill="both", expand=True, **FRAME_PADDING)
         columns = ("id", "title", "due_date", "priority", "status", "scheduled_start", "scheduled_end")
-        self.tree = ttk.Treeview(tasks_frame, columns=columns, show="headings", selectmode='extended') # selectmode extended
+        self.tree = ttk.Treeview(tasks_frame, columns=columns, show="headings", selectmode='extended')
         for col in columns: self.tree.heading(col, text=col.replace("_"," ").title()); self.tree.column(col, width=50 if col=="id" else (180 if col=="title" else (110 if "schedule" in col or "date" in col else 80)), stretch=(col!="id"))
         self.tree.pack(fill="both", expand=True, side="left", **BASE_PADDING)
         scrollbar = ttk.Scrollbar(tasks_frame, orient="vertical", command=self.tree.yview); self.tree.configure(yscrollcommand=scrollbar.set); scrollbar.pack(side="right", fill="y")
@@ -90,28 +89,20 @@ class TaskView(BaseView):
         ttk.Button(buttons_frame, text="Refresh Tasks", command=self.load_tasks).pack(side="left", **BASE_PADDING)
         ttk.Button(buttons_frame, text="Mark Complete", command=self.complete_task).pack(side="left", **BASE_PADDING)
         ttk.Button(buttons_frame, text="Smart Schedule Tasks", command=self.open_scheduler_dialog).pack(side="left", **BASE_PADDING)
-
     def _format_dt_display(self,s): return datetime.datetime.fromisoformat(s).strftime("%Y-%m-%d %H:%M") if s and isinstance(s,str) else "N/A"
     def load_tasks(self):
         for i in self.tree.get_children(): self.tree.delete(i)
-        self.tasks_map.clear() # Clear existing map
+        self.tasks_map.clear()
         try:
             tasks_from_service = TaskService.get_all_tasks(self.user_id)
             if tasks_from_service:
                 for task_dict in tasks_from_service:
-                    self.tasks_map[task_dict['task_id']] = task_dict # Populate map
-                    display_values = (
-                        task_dict.get('task_id','N/A')[:8], task_dict.get('title','N/A'),
-                        self._format_dt_display(task_dict.get('due_datetime')),
-                        task_dict.get('priority','N/A'), task_dict.get('status','N/A'),
-                        self._format_dt_display(task_dict.get('scheduled_start')),
-                        self._format_dt_display(task_dict.get('scheduled_end'))
-                    )
-                    self.tree.insert("","end", iid=task_dict['task_id'], values=display_values) # Use task_id as iid
+                    self.tasks_map[task_dict['task_id']] = task_dict
+                    display_values = (task_dict.get('task_id','N/A')[:8], task_dict.get('title','N/A'), self._format_dt_display(task_dict.get('due_datetime')), task_dict.get('priority','N/A'), task_dict.get('status','N/A'), self._format_dt_display(task_dict.get('scheduled_start')), self._format_dt_display(task_dict.get('scheduled_end')))
+                    self.tree.insert("","end", iid=task_dict['task_id'], values=display_values)
             else: self.tree.insert("", "end", values=("", "No tasks found.", "", "", "", "", ""))
         except Exception as e: self.logger.error(f"UI Error in TaskView.load_tasks: {str(e)}", exc_info=True); messagebox.showerror("Error Loading Tasks",f"Failed to load tasks: {e}", parent=self)
-
-    def add_task(self): # Logic for add_task remains largely the same
+    def add_task(self):
         try:
             title = self.entries["title"].get(); description = self.entries["description"].get(); priority = self.entries["priority_var"].get(); due_datetime_iso = None
             if TKCALENDAR_AVAILABLE:
@@ -136,29 +127,21 @@ class TaskView(BaseView):
             self.entries["title"].delete(0,tk.END); self.entries["description"].delete(0,tk.END)
             if TKCALENDAR_AVAILABLE: self.entries["due_time"].delete(0,tk.END); self.entries["due_time"].insert(0, (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%H:%M"))
         except Exception as e: self.logger.error(f"UI Error in TaskView.add_task: {str(e)}", exc_info=True); messagebox.showerror("Error Adding Task",f"Failed: {e}", parent=self)
-
     def complete_task(self):
         try:
-            selected_iids = self.tree.selection() # Can be multiple if selectmode='extended'
+            selected_iids = self.tree.selection()
             if not selected_iids: messagebox.showerror("Error","No task selected.", parent=self); return
-
             completed_count = 0
-            for item_iid in selected_iids: # Iterate through all selected items
-                # full_task_id is now the item_iid itself
+            for item_iid in selected_iids:
                 full_task_id = item_iid
-                if not full_task_id or full_task_id not in self.tasks_map:
-                     self.logger.warning(f"TaskView.complete_task: Invalid task_id {full_task_id} from selection, or not in tasks_map.")
-                     continue # Skip if ID is somehow invalid
-
+                if not full_task_id or full_task_id not in self.tasks_map: self.logger.warning(f"TaskView.complete_task: Invalid task_id {full_task_id} from selection, or not in tasks_map."); continue
                 completed = TaskService.complete_task(full_task_id,self.user_id)
                 if completed: completed_count += 1
                 else: self.logger.warning(f"TaskView.complete_task: Failed to complete task {full_task_id} via service.")
-
             if completed_count > 0: messagebox.showinfo("Success",f"{completed_count} task(s) marked as complete.", parent=self)
             if completed_count < len(selected_iids): messagebox.showwarning("Partial Success", f"{len(selected_iids) - completed_count} task(s) could not be completed.", parent=self)
             self.load_tasks()
         except Exception as e: self.logger.error(f"UI Error in TaskView.complete_task: {str(e)}", exc_info=True); messagebox.showerror("Error Completing Task",f"Failed: {e}", parent=self)
-
     def open_scheduler_dialog(self):
         try:
             self.scheduler_dialog = tk.Toplevel(self.master); self.scheduler_dialog.title("Smart Scheduler"); self.scheduler_dialog.geometry("350x150"); self.scheduler_dialog.transient(self.master); self.scheduler_dialog.grab_set()
@@ -166,46 +149,24 @@ class TaskView(BaseView):
             ttk.Label(dialog_frame, text="Select Scheduling Strategy:").pack(pady=BASE_PADDING['pady']*2)
             self.schedule_strategy_var = tk.StringVar(value="priority_based"); strategies = ["priority_based", "time_optimized", "balanced"]
             strategy_combo = ttk.Combobox(dialog_frame, textvariable=self.schedule_strategy_var, values=strategies, state="readonly"); strategy_combo.pack(pady=BASE_PADDING['pady']); strategy_combo.set("priority_based")
-            # Changed button text below
             ttk.Button(dialog_frame, text="Schedule Selected Tasks", command=self.execute_scheduling).pack(pady=BASE_PADDING['pady']*2)
         except Exception as e: self.logger.error(f"UI Error in TaskView.open_scheduler_dialog: {str(e)}", exc_info=True); messagebox.showerror("Error", f"Could not open scheduler: {e}", parent=self)
-
     def execute_scheduling(self):
         try:
             strategy = self.schedule_strategy_var.get()
             if not strategy: messagebox.showerror("Error", "Please select a strategy.", parent=self.scheduler_dialog); return
-
-            selected_task_ids = self.tree.selection() # These are actual task_ids
-            if not selected_task_ids:
-                messagebox.showinfo("No Tasks Selected", "Please select one or more tasks from the list to schedule.", parent=self.scheduler_dialog)
-                return
-
+            selected_task_ids = self.tree.selection()
+            if not selected_task_ids: messagebox.showinfo("No Tasks Selected", "Please select one or more tasks from the list to schedule.", parent=self.scheduler_dialog); return
             selected_tasks_list = [self.tasks_map[tid] for tid in selected_task_ids if tid in self.tasks_map]
-
-            if not selected_tasks_list:
-                messagebox.showwarning("Tasks Not Found", "Could not retrieve details for selected tasks. Please refresh and try again.", parent=self.scheduler_dialog)
-                return
-
-            # Optionally, filter further e.g. only 'pending' or 'scheduled' tasks for rescheduling
-            # tasks_to_schedule = [task for task in selected_tasks_list if task.get('status', '').lower() in ['pending', 'scheduled']]
-            # if not tasks_to_schedule:
-            #     messagebox.showinfo("No Schedulable Tasks", "Selected tasks are not in a schedulable state (e.g., already completed).", parent=self.scheduler_dialog)
-            #     self.scheduler_dialog.destroy(); return
-
-            scheduler = SchedulingService(self.user_id)
-            # Pass selected_tasks_list (or tasks_to_schedule if filtered)
-            scheduled_info = scheduler.schedule_multiple_tasks(selected_tasks_list, strategy)
-
+            if not selected_tasks_list: messagebox.showwarning("Tasks Not Found", "Could not retrieve details for selected tasks. Please refresh and try again.", parent=self.scheduler_dialog); return
+            scheduler = SchedulingService(self.user_id); scheduled_info = scheduler.schedule_multiple_tasks(selected_tasks_list, strategy)
             if scheduled_info is not None: messagebox.showinfo("Success", f"{len(scheduled_info) if scheduled_info else 0} selected tasks have been scheduled/rescheduled.", parent=self.scheduler_dialog)
             else: messagebox.showwarning("Scheduling", "Scheduling service failed or no tasks were scheduled.", parent=self.scheduler_dialog)
-
             self.load_tasks()
-            if hasattr(self, 'scheduler_dialog') and self.scheduler_dialog.winfo_exists():
-                 self.scheduler_dialog.destroy()
+            if hasattr(self, 'scheduler_dialog') and self.scheduler_dialog.winfo_exists(): self.scheduler_dialog.destroy()
         except Exception as e: self.logger.error(f"UI Error in TaskView.execute_scheduling: {str(e)}", exc_info=True); messagebox.showerror("Scheduling Error", f"Failed to schedule tasks: {e}", parent=self.scheduler_dialog if hasattr(self, 'scheduler_dialog') else self)
 
-
-class EventView(BaseView): # Minimal changes, ensure consistency
+class EventView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
         new_event_frame = ttk.LabelFrame(self, text="New Event", padding=LABELFRAME_PADDING); new_event_frame.pack(fill="x", **FRAME_PADDING)
@@ -255,9 +216,38 @@ class EventView(BaseView): # Minimal changes, ensure consistency
         except ValueError as ve: self.logger.warning(f"Data validation error in EventView.add_event: {str(ve)}"); messagebox.showerror("Error","Invalid Time format. Use HH:MM.", parent=self)
         except Exception as ex: self.logger.error(f"UI Error in EventView.add_event: {str(ex)}", exc_info=True); messagebox.showerror("Error Adding Event",f"Failed: {ex}", parent=self)
 
-class ChatView(BaseView): # Unchanged
+class ChatView(BaseView):
     def __init__(self, parent, user_id, app=None):
         super().__init__(parent, user_id, app=app)
+        self.pending_action_details = None # For slot filling
+        self.expected_param_key = None   # Key of param Kairo just asked for
+
+        self.ACTIONS_CONFIG = {
+            'create_task': {
+                'required': {'title': "What should be the title of the task?"},
+                'optional': {
+                    'description': "Any description for the task? (Optional)",
+                    'due_datetime': "When is it due (e.g., YYYY-MM-DD HH:MM)? (Optional)",
+                    'priority': "What's the priority (low, medium, high)? (Optional, defaults to medium)"
+                },
+                'service_call': TaskService.create_task,
+                'view_to_refresh': "Tasks"
+            },
+            'create_event': {
+                'required': {
+                    'title': "What is the event's title?",
+                    'start_datetime': "When does the event start (e.g., YYYY-MM-DD HH:MM)?"
+                },
+                'optional': {
+                    'description': "Any description for the event? (Optional)",
+                    'end_datetime': "When does it end (YYYY-MM-DD HH:MM)? (Optional)",
+                    'location': "Where will it take place? (Optional)"
+                },
+                'service_call': EventService.create_event,
+                'view_to_refresh': "Events"
+            }
+        }
+
         self.history_text=Text(self,wrap=tk.WORD,state=tk.DISABLED,height=20,font=TEXT_FONT, relief=tk.FLAT, highlightthickness=HIGHLIGHT_THICKNESS, borderwidth=BORDER_WIDTH, padx=5,pady=5, bg=BG_COLOR, fg=TEXT_COLOR);
         self.history_text.pack(fill=tk.BOTH,expand=True,padx=FRAME_PADDING['padx'],pady=(FRAME_PADDING['pady'],0))
         input_frame=ttk.Frame(self); input_frame.pack(fill=tk.X,padx=FRAME_PADDING['padx'],pady=FRAME_PADDING['pady'])
@@ -267,40 +257,124 @@ class ChatView(BaseView): # Unchanged
         self.send_button=ttk.Button(input_frame,text="Send",command=self.send_message);
         self.send_button.pack(side=tk.RIGHT,padx=(INPUT_PADDING['padx'],0))
         self.load_initial_history()
+
     def add_msg(self,s,m): self.history_text.config(state=tk.NORMAL); stag=f"{s}_tag"; self.history_text.tag_configure(stag,font=(APP_FONT_FAMILY, APP_FONT_SIZE, 'bold')); self.history_text.insert(tk.END,f"{s}",stag); self.history_text.insert(tk.END,f": {m}\n\n"); self.history_text.config(state=tk.DISABLED); self.history_text.see(tk.END)
+
     def load_initial_history(self):
         try: [self.add_msg(msg['sender'].title(),msg['message']) for msg in kairo_ai.get_conversation_history(self.user_id,limit=15)]
         except Exception as e: self.logger.error(f"UI Error in ChatView.load_initial_history: {str(e)}", exc_info=True); self.add_msg("System",f"Error loading history: {e}")
-    def send_message_event(self,e): self.send_message()
-    def send_message(self):
-        user_msg=self.input_entry.get();
-        if not user_msg.strip(): return
-        self.add_msg("You",user_msg); self.input_entry.delete(0,tk.END)
-        self.input_entry.config(state=tk.DISABLED); self.send_button.config(state=tk.DISABLED)
+
+    def send_message_event(self,event): self.send_message()
+
+    def _execute_action_and_feedback(self, action_type, params):
+        self.logger.info(f"Executing action '{action_type}' with params: {params}")
+        config = self.ACTIONS_CONFIG[action_type]
+        service_method = config['service_call']
         try:
-            hist=kairo_ai.get_conversation_history(self.user_id,limit=10); kairo_ai.log_conversation_message(self.user_id,"user",user_msg)
-            raw=kairo_ai.get_kairo_response(self.user_id,user_msg,hist); kairo_ai.log_conversation_message(self.user_id,"kairo",raw)
-            parsed=kairo_ai.parse_ai_action(raw)
-            if parsed.get('action') == 'create_task':
-                task_params = parsed.get('parameters', {})
-                if not task_params.get('title'): self.add_msg("Kairo", "I can create a task, but I need a title. Could you provide one?")
-                else:
-                    created_task = TaskService.create_task(self.user_id, task_params)
-                    if created_task: self.add_msg("Kairo", f"Okay, I've created the task: '{created_task['title']}'.");
-                    if self.app and hasattr(self.app, 'views') and "Tasks" in self.app.views: self.app.views["Tasks"].load_tasks()
-                    else: self.add_msg("Kairo", "Failed to create task (service returned None).")
-            elif parsed.get('action') == 'create_event':
-                event_params = parsed.get('parameters', {})
-                if not event_params.get('title') or not event_params.get('start_datetime'): self.add_msg("Kairo", "I can create an event, but I need at least a title and a start time.")
-                else:
-                    created_event = EventService.create_event(self.user_id, event_params)
-                    if created_event: self.add_msg("Kairo", f"Alright, I've scheduled the event: '{created_event['title']}'.");
-                    if self.app and hasattr(self.app, 'views') and "Events" in self.app.views: self.app.views["Events"].load_events()
-                    else: self.add_msg("Kairo", "Failed to create event (service returned None).")
-            elif parsed.get('action') == 'conversation' or not parsed.get('action'): self.add_msg("Kairo", parsed.get('response', "I'm not sure how to respond to that."))
-            else: self.add_msg("Kairo", f"I received an action '{parsed.get('action')}' but I'm not yet equipped to handle it. Details: {parsed.get('parameters', 'No parameters')}")
-        except Exception as e: err_msg=f"Error AI response: {e}"; self.add_msg("System",err_msg); kairo_ai.log_conversation_message(self.user_id,"system_error",err_msg); self.logger.error(f"UI Error in ChatView.send_message (AI part): {str(e)}", exc_info=True)
-        finally: self.input_entry.config(state=tk.NORMAL); self.send_button.config(state=tk.NORMAL); self.input_entry.focus_set()
+            # Ensure params are cleaned or validated if necessary before passing to service
+            # e.g. convert date/time strings to ISO if AI provides them in natural language
+            # For now, assume AI provides them in a compatible format or service handles it.
+            result = service_method(self.user_id, params)
+            if result:
+                item_name = params.get('title', 'the item')
+                self.add_msg("Kairo", f"Done! I've {action_type.replace('_', ' ')}d '{item_name}' for you.")
+                view_name_to_refresh = config.get('view_to_refresh')
+                if view_name_to_refresh and self.app and hasattr(self.app, 'views') and view_name_to_refresh in self.app.views:
+                    view_to_refresh_instance = self.app.views[view_name_to_refresh]
+                    # Dynamically call load_tasks or load_events
+                    if hasattr(view_to_refresh_instance, 'load_tasks'): view_to_refresh_instance.load_tasks()
+                    elif hasattr(view_to_refresh_instance, 'load_events'): view_to_refresh_instance.load_events()
+            else:
+                self.add_msg("Kairo", f"Sorry, I couldn't complete the action '{action_type}'. The service did not confirm success.")
+        except Exception as e:
+            self.logger.error(f"Error executing action '{action_type}' for user {self.user_id}: {str(e)}", exc_info=True)
+            self.add_msg("Kairo", f"An error occurred while trying to {action_type.replace('_', ' ')}: {str(e)}")
+
+
+    def send_message(self):
+        user_msg = self.input_entry.get().strip()
+        if not user_msg: return
+
+        self.add_msg("You", user_msg)
+        self.input_entry.delete(0, tk.END)
+        self.input_entry.config(state=tk.DISABLED); self.send_button.config(state=tk.DISABLED)
+
+        try:
+            if self.pending_action_details:
+                if user_msg.lower() == "cancel":
+                    self.add_msg("Kairo", "Okay, I've cancelled the current action.")
+                    self.pending_action_details = None; self.expected_param_key = None
+                else: # User is providing info for a pending action
+                    if self.expected_param_key:
+                        self.pending_action_details['params'][self.expected_param_key] = user_msg
+                        if self.expected_param_key in self.pending_action_details['missing']:
+                            del self.pending_action_details['missing'][self.expected_param_key]
+                        self.expected_param_key = None
+
+                    if not self.pending_action_details['missing']: # All params collected
+                        action_to_execute = self.pending_action_details['action']
+                        params_for_action = self.pending_action_details['params']
+                        self.pending_action_details = None
+                        self._execute_action_and_feedback(action_to_execute, params_for_action)
+                    else: # Still missing params, ask for the next one
+                        next_key = list(self.pending_action_details['missing'].keys())[0]
+                        self.expected_param_key = next_key
+                        question = self.pending_action_details['missing'][next_key]
+                        self.add_msg("Kairo", f"Got it. Next, {question}")
+            else: # Not in slot-filling mode, process as new query
+                hist = kairo_ai.get_conversation_history(self.user_id, limit=10)
+                kairo_ai.log_conversation_message(self.user_id, "user", user_msg)
+                raw = kairo_ai.get_kairo_response(self.user_id, user_msg, hist)
+                kairo_ai.log_conversation_message(self.user_id, "kairo", raw) # Log raw for now
+                parsed = kairo_ai.parse_ai_action(raw)
+                action_type = parsed.get('action')
+
+                if action_type in self.ACTIONS_CONFIG:
+                    config = self.ACTIONS_CONFIG[action_type]
+                    provided_params = parsed.get('parameters', {})
+                    current_params = {} # Params we have values for
+                    missing_params_map = {} # Params we still need, and their questions
+
+                    for key, question in config['required'].items():
+                        if key in provided_params and provided_params[key]:
+                            current_params[key] = provided_params[key]
+                        else:
+                            missing_params_map[key] = question
+
+                    # Also populate optional params if AI provided them
+                    for key, question in config.get('optional', {}).items():
+                         if key in provided_params and provided_params[key]:
+                            current_params[key] = provided_params[key]
+
+                    if not missing_params_map: # All required params provided by AI
+                        self._execute_action_and_feedback(action_type, current_params)
+                    else: # AI suggested an action but missed required params
+                        self.pending_action_details = {'action': action_type, 'params': current_params, 'missing': missing_params_map}
+                        next_key_to_ask = list(missing_params_map.keys())[0]
+                        self.expected_param_key = next_key_to_ask
+                        self.add_msg("Kairo", f"Okay, I can help with that. First, {missing_params_map[next_key_to_ask]}")
+
+                elif action_type == 'conversation' or not action_type : # Standard conversational reply
+                    self.add_msg("Kairo", parsed.get('response', "I'm not sure how to respond to that."))
+                else: # Unknown structured action
+                    self.add_msg("Kairo", f"I received an action '{action_type}' but I'm not yet equipped to handle it. Details: {parsed.get('parameters', 'No parameters')}")
+
+        except Exception as e:
+            err_msg=f"Error in processing message: {e}"; self.add_msg("System",err_msg)
+            self.logger.error(f"UI Error in ChatView.send_message: {str(e)}", exc_info=True)
+            if self.pending_action_details : # If error during slot filling, cancel it
+                 kairo_ai.log_conversation_message(self.user_id,"system_error", f"Error during slot filling for {self.pending_action_details.get('action')}: {err_msg}")
+                 self.pending_action_details = None; self.expected_param_key = None
+            else:
+                 kairo_ai.log_conversation_message(self.user_id,"system_error", err_msg)
+        finally:
+            if not self.pending_action_details: # Only re-enable fully if not waiting for more params
+                self.input_entry.config(state=tk.NORMAL); self.send_button.config(state=tk.NORMAL); self.input_entry.focus_set()
+            elif self.pending_action_details and not self.pending_action_details['missing']: # All params collected, action attempted, re-enable
+                 self.input_entry.config(state=tk.NORMAL); self.send_button.config(state=tk.NORMAL); self.input_entry.focus_set()
+            else: # Still in slot filling, waiting for user input for next param
+                 self.input_entry.config(state=tk.NORMAL); self.send_button.config(state=tk.NORMAL); self.input_entry.focus_set()
+
 
 class SettingsView(BaseView): # Unchanged
     def __init__(self, parent, user_id, app=None):
@@ -434,7 +508,7 @@ class KairoApp:
 
 if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    logging.info(f"KairoApp __main__ started. CWD: {os.getcwd()}. DB Path: {database.DATABASE_PATH}") # CWD might not be script_dir if not chdir'd
+    logging.info(f"KairoApp __main__ started. CWD: {os.getcwd()}. DB Path: {database.DATABASE_PATH}")
     root = tk.Tk();
     app = KairoApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)

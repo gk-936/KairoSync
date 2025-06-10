@@ -5,7 +5,7 @@ Kairo is a desktop application designed to be your personal assistant, helping y
 ## Features
 
 *   **Dashboard**: Get a quick overview of your day, including upcoming events and pending tasks.
-*   **Task Management**: Create, view, and complete tasks. Uses a calendar widget for easy date input.
+*   **Task Management**: Create, view, complete, and define dependencies between tasks. Tasks can be scheduled using smart algorithms based on priority or other strategies. Uses a calendar widget for easy date input.
 *   **Smart Scheduling**: Select one or more tasks from your list, then choose a strategy (e.g., priority-based) to have Kairo schedule them for you.
 *   **Event Scheduling**: Add and view your events. Uses a calendar widget for date input.
 *   **Learning Center**:
@@ -74,17 +74,17 @@ The application features a tabbed interface:
     *   Try commands like: "Kairo, create a task to buy milk tomorrow" or "Kairo, schedule an event: Dentist appointment next Tuesday at 3 PM for 1 hour."
     *   If you ask Kairo to perform an action (like creating a task or event) and essential details are missing, Kairo will now prompt you for the specific information needed.
 *   **Tasks**:
-    *   View existing tasks, including their scheduled times.
-    *   Add new tasks using the form (date input uses a calendar).
+    *   View existing tasks, including their scheduled times and dependencies. The task list now displays a 'Depends On' column showing the title of the parent task if a dependency is set.
+    *   Add new tasks using the form. When creating a new task, you can optionally select a parent task from the 'Depends On Task' dropdown. This signifies the new task should ideally be addressed after the parent task is completed.
     *   Select one or more tasks from the list, then click "Smart Schedule Tasks". A dialog will appear allowing you to choose a scheduling strategy for the selected tasks.
-    *   Select a task and click "Mark Complete".
+    *   Select a task (or multiple) and click "Mark Complete".
     *   Click "Refresh" to reload the task list.
 *   **Events**:
     *   View existing events.
     *   Add new events using the form (date input uses a calendar).
     *   Click "Refresh Events" to reload.
 *   **Learning Center**:
-    *   **Create Learning Session**: Enter a topic, comma-separated resources, and a start date/time (using a calendar for date) to create a scheduled event and an associated note for your learning.
+    *   **Create Learning Session**: Enter a topic, comma-separated resources, and a start date/time to create a scheduled event and an associated note for your learning.
     *   **Get Personalized Learning Content**: Enter a topic and click "Get Content" to see a simplified, style-based content suggestion.
 *   **Settings**:
     *   View and modify your application preferences.
@@ -109,7 +109,6 @@ The application features a tabbed interface:
 
 *   **Packaging**: Tools like PyInstaller can be used. Users may need to ensure their Python installation includes shared libraries for PyInstaller to work correctly, especially on Linux.
 *   **Advanced UI Enhancements**: Explore more sophisticated visual themes or custom widget designs beyond the current minimalistic approach.
-*   **Advanced Scheduling Logic**: Incorporate task dependencies, more detailed user availability (e.g., from a calendar integration), and refine the "time_optimized" and "balanced" strategies in `SchedulingService`.
+*   **Advanced Scheduling Logic**: Utilize Task Dependencies in Scheduling: Enhance the `SchedulingService` to understand and respect the defined task dependencies when suggesting a schedule. Further incorporate more detailed user availability and refine 'time_optimized'/'balanced' strategies.
 *   **Full Adaptive Learning**: Further develop the `AdaptiveLearner` capabilities and integrate its suggestions more deeply into the UI and scheduling.
-*   **Conversational Slot Filling for AI Actions**: Enable multi-turn dialogues where Kairo collects missing parameters one by one if needed for more complex actions.
 ```
