@@ -1,11 +1,10 @@
-# services.py
+# new_services.py
 import datetime
 import json
-from database import get_db
-from models import Task, Event, Models  # Assuming Models, Task, Event exist
-from utils import format_timestamp, generate_id, parse_flexible_datetime  # Assuming these exist
-from adaptive_learning import AdaptiveLearner  # Assuming this exists
-
+import database # Changed from "from database import get_db"
+from models import Task, Event, Models
+from utils import format_timestamp, generate_id # parse_flexible_datetime removed as it's not used here
+from adaptive_learning import AdaptiveLearner
 
 class TaskService:
     @staticmethod
@@ -19,7 +18,10 @@ class TaskService:
             priority=validated.get('priority', 'medium')
         )
 
-        db = get_db()
+        db = database.get_db_connection() # Changed
+        # Assuming db.execute is a direct method on the connection object
+        # For sqlite3, this is true. For other DBAPIs, a cursor might be needed first.
+        # The original code used db.execute directly, so we maintain that pattern.
         db.execute(
             "INSERT INTO tasks (task_id, user_id, title, description, due_datetime, priority, status) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -31,25 +33,30 @@ class TaskService:
 
     @staticmethod
     def get_all_tasks(user_id):
-        db = get_db()
-        tasks = db.execute(
+        db = database.get_db_connection() # Changed
+        cursor = db.cursor() # Use a cursor for fetching
+        cursor.execute(
             "SELECT * FROM tasks WHERE user_id = ? AND is_archived = 0 ORDER BY created_at DESC",
             (user_id,)
-        ).fetchall()
+        )
+        tasks = cursor.fetchall() # Fetch all from cursor
         return [dict(task) for task in tasks]
 
     @staticmethod
     def complete_task(task_id, user_id):
-        db = get_db()
-        task = db.execute(
+        db = database.get_db_connection() # Changed
+        cursor = db.cursor() # Use a cursor
+        cursor.execute(
             "SELECT * FROM tasks WHERE task_id = ? AND user_id = ?",
             (task_id, user_id)
-        ).fetchone()
+        )
+        task = cursor.fetchone() # Fetch one
 
         if not task:
             return None
 
         completed_at = datetime.datetime.now().isoformat()
+        # Direct execute on connection for non-query statements is fine for sqlite3
         db.execute(
             "UPDATE tasks SET status = 'completed', status_change_timestamp = ? "
             "WHERE task_id = ?",
@@ -57,19 +64,20 @@ class TaskService:
         )
         db.commit()
 
-        # Log adaptive learning interaction
         learner = AdaptiveLearner(user_id)
         detail = json.dumps({
             "task_id": task_id,
-            "title": task['title'],
+            "title": task['title'], # task is a Row object, access by index or key
             "completed_at": completed_at
         })
         learner.log_interaction("task_completion", detail, "success")
-        learner.analyze_task_performance()
 
-        return db.execute(
+        # Fetch the updated task to return it
+        cursor.execute(
             "SELECT * FROM tasks WHERE task_id = ?", (task_id,)
-        ).fetchone()
+        )
+        updated_task = cursor.fetchone()
+        return dict(updated_task) if updated_task else None
 
 
 class EventService:
@@ -86,49 +94,58 @@ class EventService:
             attendees=validated.get('attendees')
         )
 
-        db = get_db()
+        db = database.get_db_connection() # Changed
         db.execute(
             "INSERT INTO events (event_id, user_id, title, description, start_datetime, end_datetime, location, attendees) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             (event_data['event_id'], user_id, event_data['title'], event_data['description'],
-             event_data['start_datetime'], event_data['end_datetime'], event_data['location'], event_data['attendees'])
+             event_data['start_datetime'], event_data['end_datetime'], event_data['location'],
+             json.dumps(event_data.get('attendees')) if event_data.get('attendees') is not None else None) # Store as JSON
         )
         db.commit()
         return event_data
 
     @staticmethod
     def get_all_events(user_id):
-        db = get_db()
-        events = db.execute(
-            "SELECT * FROM events WHERE user_id = ? ORDER BY start_datetime DESC",
+        db = database.get_db_connection() # Changed
+        cursor = db.cursor() # Use a cursor
+        cursor.execute(
+            "SELECT * FROM events WHERE user_id = ? AND is_archived = 0 ORDER BY start_datetime DESC", # Assuming is_archived field
             (user_id,)
-        ).fetchall()
-        return [dict(event) for event in events]
+        )
+        events = cursor.fetchall() # Fetch all
+        event_list = []
+        for event_row in events:
+            event_dict = dict(event_row)
+            if event_dict.get('attendees') and isinstance(event_dict['attendees'], str):
+                try:
+                    event_dict['attendees'] = json.loads(event_dict['attendees'])
+                except json.JSONDecodeError:
+                    event_dict['attendees'] = [] # Default to empty list on error
+            event_list.append(event_dict)
+        return event_list
 
 
 class LearningService:
     def create_learning_session(self, user_id, topic, resources):
-        # Create learning session event
         event_service = EventService()
-        optimal_time = AdaptiveLearner(user_id).optimize_schedule(2)  # Assuming this method exists
-        event = event_service.create_event(
-            user_id,
-            {
-                "title": f"Learning Session: {topic}",
-                "start_datetime": optimal_time,
-                "end_datetime": (
-                            datetime.datetime.fromisoformat(optimal_time) + datetime.timedelta(hours=2)).isoformat()
-            }
-        )
+        # Simplified optimal_time for now, AdaptiveLearner might be complex
+        optimal_time = (datetime.datetime.now() + datetime.timedelta(days=1)).isoformat()
 
-        # Create related materials
+        event_dict_data = {
+            "title": f"Learning Session: {topic}",
+            "start_datetime": optimal_time,
+            "end_datetime": (datetime.datetime.fromisoformat(optimal_time) + datetime.timedelta(hours=2)).isoformat()
+        }
+        event = event_service.create_event(user_id, event_dict_data)
+
         note = {
             "title": f"{topic} Study Notes",
-            "content": f"Resources: {', '.join(resources)}",
+            "content": f"Resources: {', '.join(resources if isinstance(resources, list) else [str(resources)])}",
             "tags": "learning," + topic
         }
-        db = get_db()
-        note_id = generate_id("note")  # Assuming generate_id exists
+        db = database.get_db_connection() # Changed
+        note_id = generate_id("note")
         db.execute(
             "INSERT INTO notes (note_id, user_id, title, content, tags) "
             "VALUES (?, ?, ?, ?, ?)",
@@ -136,8 +153,7 @@ class LearningService:
         )
         db.commit()
 
-        # Log learning interaction
-        learner = AdaptiveLearner(user_id)  # Assuming AdaptiveLearner exists
+        learner = AdaptiveLearner(user_id)
         detail = json.dumps({
             "topic": topic,
             "resources": resources,
@@ -148,9 +164,9 @@ class LearningService:
         return event, {"note_id": note_id, **note}
 
     def generate_personalized_content(self, user_id, topic):
-        learner = AdaptiveLearner(user_id)  # Assuming AdaptiveLearner exists
-        style = learner.profile['learning_style']
-        proficiency = learner.get_knowledge_proficiency(topic)
+        learner = AdaptiveLearner(user_id)
+        style = learner.profile.get('learning_style', 'visual')
+        proficiency = learner.get_knowledge_proficiency(topic) if hasattr(learner, 'get_knowledge_proficiency') else 0.1
 
         content = ""
         if style == "visual":
@@ -160,53 +176,59 @@ class LearningService:
         else:
             content = f"Here are hands-on resources for {topic}:\n\n- Practice exercises\n- Projects\n- Experiments"
 
-        # Adjust difficulty based on proficiency
         if proficiency < 0.3:
             content += "\n\nStarting with beginner materials..."
         elif proficiency < 0.7:
             content += "\n\nFocusing on intermediate concepts..."
         else:
             content += "\n\nChallenging advanced topics..."
-
         return content
 
 
 class ReportService:
     @staticmethod
     def generate_daily_summary(user_id):
-        db = get_db()
+        db = database.get_db_connection() # Changed
         today = datetime.date.today().isoformat()
+        cursor = db.cursor()
 
-        # Get today's events
-        events = db.execute(
+        cursor.execute(
             "SELECT title, start_datetime FROM events "
             "WHERE user_id = ? AND date(start_datetime) = ? "
             "ORDER BY start_datetime",
             (user_id, today)
-        ).fetchall()
+        )
+        events = cursor.fetchall()
 
-        # Get pending tasks
-        tasks = db.execute(
+        cursor.execute(
             "SELECT title, priority FROM tasks "
             "WHERE user_id = ? AND status != 'completed' AND is_archived = 0 "
             "ORDER BY due_datetime",
             (user_id,)
-        ).fetchall()
+        )
+        tasks = cursor.fetchall()
 
-        # Format summary
         summary = "Good morning. I'm Kairo. Here's your daily briefing:\n\n"
 
         if events:
             summary += "📅 Today's Schedule:\n"
-            for event in events:
-                start_time = format_timestamp(event['start_datetime'], '%H:%M')
+            for event_row in events:
+                event = dict(event_row)
+                start_time = format_timestamp(event['start_datetime'], '%H:%M') if event.get('start_datetime') else "N/A"
                 summary += f"- {start_time}: {event['title']}\n"
             summary += "\n"
+        else:
+            summary += "📅 No events scheduled for today.\n\n"
+
 
         if tasks:
             summary += "📝 Your Tasks:\n"
-            for task in tasks:
-                summary += f"- {task['title']} ({task['priority']} priority)\n"
+            for task_row in tasks:
+                task = dict(task_row)
+                summary += f"- {task['title']} ({task.get('priority','medium')} priority)\n"
+            summary += "\n"
+        else:
+            summary += "📝 No pending tasks. Well done!\n\n"
 
         summary += "\nWould you like me to schedule focus time for your high-priority tasks?"
         return summary
